@@ -39,6 +39,14 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 - Penanganan biometrik gagal, dibatalkan, tidak tersedia, belum terdaftar, dan lockout.
 - PIN selalu tersedia sebagai fallback.
 - Pengguna yang sudah memiliki PIN dapat mengaktifkan biometrik setelah masuk.
+- Auto-lock setelah aplikasi berada di background selama 1 menit.
+- Durasi background dihitung saat aplikasi kembali aktif; perubahan jam mundur
+  diperlakukan secara aman dengan langsung mengunci aplikasi.
+- Snapshot recent apps ditutupi pada Android dan iOS.
+- Android memblokir screenshot serta screen recording pada layar PIN, lock
+  screen, dan penawaran biometrik menggunakan `FLAG_SECURE`.
+- iOS menampilkan privacy shield saat layar sensitif sedang direkam atau
+  dicerminkan.
 - Unit test dan widget test untuk alur utama.
 
 ### Belum selesai
@@ -48,8 +56,6 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 - Setoran, penarikan, dan riwayat transaksi.
 - Database lokal terenkripsi untuk data tabungan.
 - Backup terenkripsi sebenarnya; layar saat ini baru menjelaskan rencana fiturnya.
-- Auto-lock berbasis lifecycle/background.
-- Perlindungan recent apps dan screenshot layar sensitif.
 - Pengaturan keamanan, termasuk mengubah PIN dan menonaktifkan biometrik.
 - Lupa PIN dan pemulihan akses mode lokal.
 - Notifikasi, laporan, ekspor, serta sinkronisasi.
@@ -132,6 +138,18 @@ Catatan: perlindungan manipulasi jam perangkat belum sepenuhnya dapat dijamin pa
 
 Biometrik harus diuji pada perangkat nyata dengan sidik jari/wajah yang sudah terdaftar.
 
+## Privasi layar
+
+- Android selalu mengaktifkan `FLAG_SECURE` ketika aplikasi masuk background
+  agar recent apps tidak menyimpan snapshot data. Saat aplikasi aktif, flag
+  tetap menyala hanya pada layar sensitif.
+- iOS memasang privacy shield saat aplikasi tidak aktif sehingga app switcher
+  hanya menampilkan layar Pocketly yang netral. Privacy shield juga ditampilkan
+  ketika screen recording atau mirroring terdeteksi pada layar sensitif.
+- iOS tidak menyediakan API resmi untuk mencegah satu screenshot statis sebelum
+  gambar diambil. Pocketly tidak menggunakan trik `UITextField` tidak resmi yang
+  berisiko merusak rendering dan aksesibilitas Flutter.
+
 ## Struktur penting
 
 ```text
@@ -189,7 +207,7 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 14 test lulus.
+- Test: 16 test lulus.
 - Build Android debug: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
 - Build iOS belum diverifikasi karena lingkungan pengembangan saat ini menggunakan Windows.
@@ -237,10 +255,8 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 ## Langkah berikutnya yang direkomendasikan
 
 1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
-2. Implementasi auto-lock 1 menit dan pengelolaan lifecycle aplikasi.
-3. Tutupi data pada recent apps serta blok screenshot pada layar sensitif.
-4. Buat dashboard kosong dan struktur navigasi utama.
-5. Tentukan database lokal terenkripsi dan mulai CRUD target tabungan.
+2. Buat dashboard kosong dan struktur navigasi utama.
+3. Tentukan database lokal terenkripsi dan mulai CRUD target tabungan.
 
 Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:
 

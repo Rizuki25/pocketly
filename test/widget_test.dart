@@ -7,6 +7,7 @@ import 'package:pocketly/core/security/pin_auth_repository.dart';
 import 'package:pocketly/core/security/pin_credential.dart';
 import 'package:pocketly/core/security/pin_hasher.dart';
 import 'package:pocketly/core/security/secure_key_value_store.dart';
+import 'package:pocketly/core/security/screen_privacy_controller.dart';
 import 'package:pocketly/features/security/presentation/biometric_offer_screen.dart';
 
 void main() {
@@ -89,15 +90,72 @@ void main() {
   testWidgets('existing credential opens the PIN lock screen', (tester) async {
     final store = MemorySecureKeyValueStore();
     final repository = _testRepository(store);
+    final screenPrivacyController = _FakeScreenPrivacyController();
     await repository.createPin('135790');
 
-    await tester.pumpWidget(_testApp(store: store, pinRepository: repository));
+    await tester.pumpWidget(
+      _testApp(
+        store: store,
+        pinRepository: repository,
+        screenPrivacyController: screenPrivacyController,
+      ),
+    );
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('pin-lock-screen')), findsOneWidget);
+    expect(screenPrivacyController.lastValue, isTrue);
 
     await _enterPin(tester, '135790');
     await tester.tap(find.byKey(const Key('pin-unlock')));
     await tester.pumpAndSettle();
+    expect(find.byKey(const Key('security-unlocked-screen')), findsOneWidget);
+    expect(screenPrivacyController.lastValue, isFalse);
+  });
+
+  testWidgets('unlocked app locks after one minute in background', (
+    tester,
+  ) async {
+    final store = MemorySecureKeyValueStore();
+    final repository = _testRepository(store);
+    var now = DateTime(2026, 7, 16, 10);
+    await repository.createPin('135790');
+
+    await tester.pumpWidget(
+      _testApp(store: store, pinRepository: repository, now: () => now),
+    );
+    await tester.pumpAndSettle();
+    await _enterPin(tester, '135790');
+    await tester.tap(find.byKey(const Key('pin-unlock')));
+    await tester.pumpAndSettle();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    now = now.add(const Duration(minutes: 1));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('pin-lock-screen')), findsOneWidget);
+  });
+
+  testWidgets('unlocked app stays open before auto-lock timeout', (
+    tester,
+  ) async {
+    final store = MemorySecureKeyValueStore();
+    final repository = _testRepository(store);
+    var now = DateTime(2026, 7, 16, 10);
+    await repository.createPin('135790');
+
+    await tester.pumpWidget(
+      _testApp(store: store, pinRepository: repository, now: () => now),
+    );
+    await tester.pumpAndSettle();
+    await _enterPin(tester, '135790');
+    await tester.tap(find.byKey(const Key('pin-unlock')));
+    await tester.pumpAndSettle();
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    now = now.add(const Duration(seconds: 59));
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
     expect(find.byKey(const Key('security-unlocked-screen')), findsOneWidget);
   });
 
@@ -215,6 +273,8 @@ PocketlyApp _testApp({
   PinAuthRepository? pinRepository,
   BiometricPreferenceRepository? biometricPreferenceRepository,
   BiometricAuthenticator? biometricAuthenticator,
+  ScreenPrivacyController? screenPrivacyController,
+  DateTime Function()? now,
 }) {
   final actualStore = store ?? MemorySecureKeyValueStore();
   return PocketlyApp(
@@ -225,7 +285,21 @@ PocketlyApp _testApp({
     biometricAuthenticator:
         biometricAuthenticator ??
         _FakeBiometricAuthenticator(authResults: [BiometricAuthStatus.success]),
+    screenPrivacyController:
+        screenPrivacyController ?? _FakeScreenPrivacyController(),
+    now: now,
   );
+}
+
+class _FakeScreenPrivacyController implements ScreenPrivacyController {
+  final values = <bool>[];
+
+  bool? get lastValue => values.lastOrNull;
+
+  @override
+  Future<void> setSensitiveScreen(bool sensitive) async {
+    values.add(sensitive);
+  }
 }
 
 class _FakeBiometricAuthenticator implements BiometricAuthenticator {
