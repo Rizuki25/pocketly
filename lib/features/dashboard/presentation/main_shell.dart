@@ -4,6 +4,7 @@ import '../../../app/theme/app_colors.dart';
 import '../../goals/data/goal_repository.dart';
 import '../../goals/domain/savings_goal.dart';
 import '../../goals/presentation/goal_form_screen.dart';
+import '../../goals/presentation/goal_detail_screen.dart';
 import '../../goals/presentation/goals_page.dart';
 import 'widgets/curved_notched_bottom_bar.dart';
 
@@ -68,6 +69,20 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  Future<void> _openGoalDetail(SavingsGoal goal) async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (detailContext) => GoalDetailScreen(
+          goal: goal,
+          onEdit: () async {
+            await _openGoalForm(goal);
+            if (detailContext.mounted) Navigator.of(detailContext).pop();
+          },
+        ),
+      ),
+    );
+  }
+
   Future<void> _toggleArchive(SavingsGoal goal) async {
     final archived = goal.status != SavingsGoalStatus.archived;
     try {
@@ -130,6 +145,7 @@ class _MainShellState extends State<MainShell> {
         loading: _loadingGoals,
         onRefresh: _loadGoals,
         onCreate: _openGoalForm,
+        onOpen: _openGoalDetail,
         onEdit: _openGoalForm,
         onArchive: _toggleArchive,
         onDelete: _deleteGoal,
@@ -326,6 +342,29 @@ class _DashboardSummary extends StatelessWidget {
             ).textTheme.headlineLarge?.copyWith(fontSize: 30),
           ),
           const SizedBox(height: 22),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.star_rounded, size: 15, color: AppColors.primary),
+                SizedBox(width: 5),
+                Text(
+                  'Target Prioritas',
+                  style: TextStyle(
+                    color: AppColors.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 10),
           Text(priority.name, style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 10),
           LinearProgressIndicator(

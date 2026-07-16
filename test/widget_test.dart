@@ -246,18 +246,21 @@ void main() {
       find.byKey(const Key('goal-target-field')),
       '12000000',
     );
+    expect(find.text('12.000.000'), findsOneWidget);
     await tester.enterText(
       find.byKey(const Key('goal-balance-field')),
       '1000000',
     );
     tester.testTextInput.hide();
     await tester.pumpAndSettle();
-    await tester.drag(
-      find.byType(ListView).last,
-      const Offset(0, -650),
-    );
+    await tester.drag(find.byType(ListView).last, const Offset(0, -650));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('goal-save-button')));
+    await tester.pump();
+    expect(find.byKey(const Key('goal-save-progress-dialog')), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 700));
+    expect(find.byKey(const Key('goal-save-success-check')), findsOneWidget);
+    await tester.pump(const Duration(seconds: 1));
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('goals-page')), findsOneWidget);

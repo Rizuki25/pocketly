@@ -9,6 +9,7 @@ class GoalsPage extends StatelessWidget {
     required this.loading,
     required this.onRefresh,
     required this.onCreate,
+    required this.onOpen,
     required this.onEdit,
     required this.onArchive,
     required this.onDelete,
@@ -19,6 +20,7 @@ class GoalsPage extends StatelessWidget {
   final bool loading;
   final Future<void> Function() onRefresh;
   final VoidCallback onCreate;
+  final ValueChanged<SavingsGoal> onOpen;
   final ValueChanged<SavingsGoal> onEdit;
   final ValueChanged<SavingsGoal> onArchive;
   final ValueChanged<SavingsGoal> onDelete;
@@ -69,6 +71,7 @@ class GoalsPage extends StatelessWidget {
                 for (final goal in active) ...[
                   _GoalCard(
                     goal: goal,
+                    onOpen: () => onOpen(goal),
                     onEdit: () => onEdit(goal),
                     onArchive: () => onArchive(goal),
                     onDelete: () => onDelete(goal),
@@ -82,6 +85,7 @@ class GoalsPage extends StatelessWidget {
                 for (final goal in archived) ...[
                   _GoalCard(
                     goal: goal,
+                    onOpen: () => onOpen(goal),
                     onEdit: () => onEdit(goal),
                     onArchive: () => onArchive(goal),
                     onDelete: () => onDelete(goal),
@@ -134,12 +138,14 @@ class _EmptyGoals extends StatelessWidget {
 class _GoalCard extends StatelessWidget {
   const _GoalCard({
     required this.goal,
+    required this.onOpen,
     required this.onEdit,
     required this.onArchive,
     required this.onDelete,
   });
 
   final SavingsGoal goal;
+  final VoidCallback onOpen;
   final VoidCallback onEdit;
   final VoidCallback onArchive;
   final VoidCallback onDelete;
@@ -147,102 +153,115 @@ class _GoalCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final archived = goal.status == SavingsGoalStatus.archived;
-    return Container(
+    return Material(
       key: Key('goal-card-${goal.id}'),
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.background,
+      color: AppColors.background,
+      shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: AppColors.muted),
+        side: const BorderSide(color: AppColors.muted),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: InkWell(
+        key: Key('goal-open-${goal.id}'),
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(22),
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(Icons.flag_rounded, color: AppColors.primary),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      goal.name,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w700,
-                      ),
+              Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(14),
                     ),
-                    if (goal.category != null)
-                      Text(
-                        goal.category!,
-                        style: TextStyle(
-                          color: AppColors.ink.withValues(alpha: 0.55),
-                          fontSize: 12,
+                    child: const Icon(
+                      Icons.flag_rounded,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          goal.name,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
+                        if (goal.category != null)
+                          Text(
+                            goal.category!,
+                            style: TextStyle(
+                              color: AppColors.ink.withValues(alpha: 0.55),
+                              fontSize: 12,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  PopupMenuButton<String>(
+                    key: Key('goal-menu-${goal.id}'),
+                    onSelected: (value) {
+                      switch (value) {
+                        case 'edit':
+                          onEdit();
+                        case 'archive':
+                          onArchive();
+                        case 'delete':
+                          onDelete();
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      const PopupMenuItem(value: 'edit', child: Text('Ubah')),
+                      PopupMenuItem(
+                        value: 'archive',
+                        child: Text(archived ? 'Pulihkan' : 'Arsipkan'),
                       ),
-                  ],
+                      const PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Hapus'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: LinearProgressIndicator(
+                  value: goal.progress,
+                  minHeight: 9,
+                  backgroundColor: AppColors.muted,
+                  color: AppColors.primary,
                 ),
               ),
-              PopupMenuButton<String>(
-                key: Key('goal-menu-${goal.id}'),
-                onSelected: (value) {
-                  switch (value) {
-                    case 'edit':
-                      onEdit();
-                    case 'archive':
-                      onArchive();
-                    case 'delete':
-                      onDelete();
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(value: 'edit', child: Text('Ubah')),
-                  PopupMenuItem(
-                    value: 'archive',
-                    child: Text(archived ? 'Pulihkan' : 'Arsipkan'),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Text(
+                    _rupiah(goal.currentBalance),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                  const PopupMenuItem(value: 'delete', child: Text('Hapus')),
+                  const Spacer(),
+                  Text(
+                    'dari ${_rupiah(goal.targetAmount)}',
+                    style: TextStyle(
+                      color: AppColors.ink.withValues(alpha: 0.58),
+                      fontSize: 12,
+                    ),
+                  ),
                 ],
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(20),
-            child: LinearProgressIndicator(
-              value: goal.progress,
-              minHeight: 9,
-              backgroundColor: AppColors.muted,
-              color: AppColors.primary,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Text(
-                _rupiah(goal.currentBalance),
-                style: const TextStyle(fontWeight: FontWeight.w700),
-              ),
-              const Spacer(),
-              Text(
-                'dari ${_rupiah(goal.targetAmount)}',
-                style: TextStyle(
-                  color: AppColors.ink.withValues(alpha: 0.58),
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ],
+        ),
       ),
     );
   }

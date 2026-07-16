@@ -1,10 +1,22 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketly/core/database/database_encryption_key_repository.dart';
+import 'package:pocketly/core/formatters/rupiah_input_formatter.dart';
 import 'package:pocketly/core/security/secure_key_value_store.dart';
 import 'package:pocketly/features/goals/data/goal_repository.dart';
 import 'package:pocketly/features/goals/domain/savings_goal.dart';
 
 void main() {
+  test('rupiah formatter groups thousands while typing', () {
+    const formatter = RupiahInputFormatter();
+    final result = formatter.formatEditUpdate(
+      const TextEditingValue(),
+      const TextEditingValue(text: '10000000'),
+    );
+
+    expect(result.text, '10.000.000');
+    expect(result.selection.baseOffset, result.text.length);
+  });
+
   test('database encryption key is generated once and persisted', () async {
     final store = MemorySecureKeyValueStore();
     final repository = DatabaseEncryptionKeyRepository(store: store);

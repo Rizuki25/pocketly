@@ -53,6 +53,12 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 - CRUD target tabungan: buat, lihat, ubah, arsipkan/pulihkan, dan hapus.
 - Formulir target dengan validasi nominal, saldo awal, frekuensi, kategori,
   prioritas, dan tenggat.
+- Format Rupiah otomatis saat mengetik nominal, misalnya `10000000` menjadi
+  `10.000.000`.
+- Dialog penyimpanan target dengan progress bar dan animasi centang sukses.
+- Detail target dengan progres, informasi tenggat, frekuensi, dan prioritas.
+- Kalkulator rencana menabung yang menghitung sisa target, jumlah periode, serta
+  rekomendasi setoran harian, mingguan, atau bulanan dengan pembulatan ke atas.
 - Unit test dan widget test untuk alur utama.
 
 ### Belum selesai
@@ -79,7 +85,7 @@ dashboard menampilkan empty state dan shortcut langsung ke formulir target baru.
 5. Pilih frekuensi menabung: harian, mingguan, bulanan, atau fleksibel.
 6. Tambahkan kategori, tenggat, dan status prioritas bila diperlukan.
 7. Tekan **Simpan target**. Target muncul di menu **Target** dan ringkasannya
-   tampil di Beranda.
+   tampil di Beranda setelah animasi penyimpanan berhasil.
 8. Gunakan menu tiga titik pada kartu target untuk mengubah, mengarsipkan,
    memulihkan, atau menghapus target.
 
@@ -245,7 +251,7 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 21 test lulus.
+- Test: 22 test lulus.
 - Build Android debug: berhasil.
 - Build Android release dengan ProGuard SQLCipher: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
@@ -295,8 +301,8 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 ## Langkah berikutnya yang direkomendasikan
 
 1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
-2. Buat detail target dan kalkulator rencana menabung.
-3. Implementasikan setoran, penarikan, dan riwayat transaksi atomik.
+2. Implementasikan setoran, penarikan, dan riwayat transaksi atomik.
+3. Tambahkan pengaturan keamanan untuk mengubah PIN dan menonaktifkan biometrik.
 
 Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:
 
