@@ -8,6 +8,7 @@ import '../core/security/local_auth_biometric_authenticator.dart';
 import '../core/security/pin_auth_repository.dart';
 import '../core/security/secure_key_value_store.dart';
 import '../core/security/screen_privacy_controller.dart';
+import '../features/dashboard/presentation/main_shell.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/security/presentation/local_data_intro_screen.dart';
 import '../features/security/presentation/biometric_offer_screen.dart';
@@ -213,8 +214,8 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
         biometricEnabled: _biometricEnabled,
         onUnlocked: _unlock,
       ),
-      _AppStage.unlocked => _SecurityUnlockedView(
-        key: ValueKey('security-unlocked'),
+      _AppStage.unlocked => MainShell(
+        key: const ValueKey('main-shell-stage'),
         biometricEnabled: _biometricEnabled,
         onConfigureBiometric: () => _setStage(_AppStage.biometricOffer),
       ),
@@ -235,81 +236,6 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
         switchInCurve: Curves.easeOutCubic,
         switchOutCurve: Curves.easeInCubic,
         child: _buildStage(),
-      ),
-    );
-  }
-}
-
-class _SecurityUnlockedView extends StatelessWidget {
-  const _SecurityUnlockedView({
-    required this.biometricEnabled,
-    required this.onConfigureBiometric,
-    super.key,
-  });
-
-  final bool biometricEnabled;
-  final VoidCallback onConfigureBiometric;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      key: const Key('security-unlocked-screen'),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.lock_open_rounded,
-                size: 54,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Akses berhasil',
-                style: Theme.of(context).textTheme.headlineLarge,
-              ),
-              const SizedBox(height: 10),
-              const Text(
-                'PIN terverifikasi. Beranda akan dibangun pada tahap berikutnya.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              if (biometricEnabled)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(16),
-                  ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.fingerprint_rounded),
-                      SizedBox(width: 9),
-                      Text(
-                        'Biometrik aktif',
-                        style: TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                )
-              else
-                FilledButton.icon(
-                  key: const Key('configure-biometric'),
-                  onPressed: onConfigureBiometric,
-                  icon: const Icon(Icons.fingerprint_rounded),
-                  label: const Text('Aktifkan biometrik'),
-                ),
-            ],
-          ),
-        ),
       ),
     );
   }

@@ -83,7 +83,7 @@ void main() {
 
     await tester.tap(find.byKey(const Key('biometric-enable')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('security-unlocked-screen')), findsOneWidget);
+    expect(find.byKey(const Key('main-shell')), findsOneWidget);
     expect(await preferenceRepository.isEnabled(), isTrue);
   });
 
@@ -107,7 +107,7 @@ void main() {
     await _enterPin(tester, '135790');
     await tester.tap(find.byKey(const Key('pin-unlock')));
     await tester.pumpAndSettle();
-    expect(find.byKey(const Key('security-unlocked-screen')), findsOneWidget);
+    expect(find.byKey(const Key('main-shell')), findsOneWidget);
     expect(screenPrivacyController.lastValue, isFalse);
   });
 
@@ -156,7 +156,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('security-unlocked-screen')), findsOneWidget);
+    expect(find.byKey(const Key('main-shell')), findsOneWidget);
   });
 
   testWidgets('enabled biometric authenticates once automatically', (
@@ -181,8 +181,41 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const Key('security-unlocked-screen')), findsOneWidget);
+    expect(find.byKey(const Key('main-shell')), findsOneWidget);
     expect(authenticator.authenticateCalls, 1);
+  });
+
+  testWidgets('main navigation opens all primary sections', (tester) async {
+    final store = MemorySecureKeyValueStore();
+    final repository = _testRepository(store);
+    await repository.createPin('135790');
+
+    await tester.pumpWidget(_testApp(store: store, pinRepository: repository));
+    await tester.pumpAndSettle();
+    await _enterPin(tester, '135790');
+    await tester.tap(find.byKey(const Key('pin-unlock')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('dashboard-page')), findsOneWidget);
+    await tester.tap(find.byKey(const Key('dashboard-create-goal')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('add-page')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('nav-target')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('goals-page')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('nav-add')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('add-page')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('nav-reports')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('reports-page')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('nav-profile')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('profile-page')), findsOneWidget);
   });
 
   testWidgets('cancelled biometric stays on lock screen without a loop', (

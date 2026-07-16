@@ -47,11 +47,11 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
   screen, dan penawaran biometrik menggunakan `FLAG_SECURE`.
 - iOS menampilkan privacy shield saat layar sensitif sedang direkam atau
   dicerminkan.
+- Dashboard empty state dan struktur navigasi utama lima bagian.
 - Unit test dan widget test untuk alur utama.
 
 ### Belum selesai
 
-- Dashboard dan navigasi utama.
 - CRUD target tabungan.
 - Setoran, penarikan, dan riwayat transaksi.
 - Database lokal terenkripsi untuk data tabungan.
@@ -60,7 +60,8 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 - Lupa PIN dan pemulihan akses mode lokal.
 - Notifikasi, laporan, ekspor, serta sinkronisasi.
 
-Setelah autentikasi berhasil, aplikasi sementara menampilkan layar **Akses berhasil**. Layar tersebut adalah placeholder sampai dashboard dibangun.
+Setelah autentikasi berhasil, aplikasi membuka dashboard. Jika belum ada target,
+dashboard menampilkan empty state dan shortcut untuk menuju menu **Tambah**.
 
 ## Alur aplikasi saat ini
 
@@ -74,7 +75,7 @@ Splash
   -> Konfirmasi PIN
   -> Popup berhasil
   -> Penawaran biometrik
-  -> Placeholder akses berhasil
+  -> Dashboard
 ```
 
 ### Pengguna lama
@@ -83,7 +84,7 @@ Splash
 Bootstrap credential
   -> Biometrik otomatis satu kali (jika aktif dan tersedia)
   -> PIN sebagai fallback
-  -> Placeholder akses berhasil
+  -> Dashboard
 ```
 
 Jika biometrik dibatalkan, dialog tidak muncul kembali secara otomatis. Pengguna dapat menekan **Gunakan biometrik** atau langsung memasukkan PIN.
@@ -207,7 +208,7 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 16 test lulus.
+- Test: 17 test lulus.
 - Build Android debug: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
 - Build iOS belum diverifikasi karena lingkungan pengembangan saat ini menggunakan Windows.
@@ -255,8 +256,7 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 ## Langkah berikutnya yang direkomendasikan
 
 1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
-2. Buat dashboard kosong dan struktur navigasi utama.
-3. Tentukan database lokal terenkripsi dan mulai CRUD target tabungan.
+2. Tentukan database lokal terenkripsi dan mulai CRUD target tabungan.
 
 Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:
 
