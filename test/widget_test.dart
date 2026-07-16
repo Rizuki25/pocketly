@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketly/app/pocketly_app.dart';
+import 'package:pocketly/core/database/database_encryption_key_repository.dart';
 import 'package:pocketly/core/security/biometric_authenticator.dart';
 import 'package:pocketly/core/security/biometric_preference_repository.dart';
 import 'package:pocketly/core/security/pin_auth_repository.dart';
@@ -368,6 +369,52 @@ void main() {
     expect(await preferenceRepository.isEnabled(), isFalse);
     expect(find.byKey(const Key('pin-lock-screen')), findsOneWidget);
   });
+
+  testWidgets(
+    'local recovery reset clears security data and reopens onboarding',
+    (tester) async {
+      final store = MemorySecureKeyValueStore();
+      final repository = _testRepository(store);
+      final preferenceRepository = BiometricPreferenceRepository(store: store);
+      await repository.createPin('135790');
+      await preferenceRepository.setEnabled(false);
+      await DatabaseEncryptionKeyRepository(store: store).getOrCreateKey();
+      var databaseDeleted = false;
+
+      await tester.pumpWidget(
+        _testApp(
+          store: store,
+          pinRepository: repository,
+          biometricPreferenceRepository: preferenceRepository,
+          deleteLocalDatabase: () async => databaseDeleted = true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('forgot-pin-action')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('forgot-pin-screen')), findsOneWidget);
+
+      await tester.drag(find.byType(ListView), const Offset(0, -500));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('reset-local-data')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('local-reset-first-confirm')));
+      await tester.pumpAndSettle();
+      await tester.enterText(
+        find.byKey(const Key('local-reset-confirmation-field')),
+        'HAPUS',
+      );
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('local-reset-final-confirm')));
+      for (var frame = 0; frame < 10; frame++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+
+      expect(databaseDeleted, isTrue);
+      expect(store.values, isEmpty);
+      expect(find.byKey(const Key('onboarding-screen')), findsOneWidget);
+    },
+  );
 }
 
 Future<void> _enterPin(WidgetTester tester, String pin) async {
@@ -399,6 +446,7 @@ PocketlyApp _testApp({
   BiometricAuthenticator? biometricAuthenticator,
   ScreenPrivacyController? screenPrivacyController,
   GoalRepository? goalRepository,
+  Future<void> Function()? deleteLocalDatabase,
   DateTime Function()? now,
 }) {
   final actualStore = store ?? MemorySecureKeyValueStore();
@@ -413,6 +461,8 @@ PocketlyApp _testApp({
     screenPrivacyController:
         screenPrivacyController ?? _FakeScreenPrivacyController(),
     goalRepository: goalRepository ?? MemoryGoalRepository(),
+    secureStore: actualStore,
+    deleteLocalDatabase: deleteLocalDatabase,
     now: now,
   );
 }

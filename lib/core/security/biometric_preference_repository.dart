@@ -12,4 +12,6 @@ class BiometricPreferenceRepository {
 
   Future<void> setEnabled(bool enabled) =>
       _store.write(_enabledKey, enabled.toString());
+
+  Future<void> clear() => _store.delete(_enabledKey);
 }

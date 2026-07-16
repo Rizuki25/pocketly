@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_colors.dart';
 import '../../../core/security/pin_auth_repository.dart';
+import '../../backup/data/backup_file_gateway.dart';
+import '../../backup/data/backup_service.dart';
+import '../../backup/presentation/backup_screen.dart';
 import '../../goals/data/goal_repository.dart';
 import '../../goals/domain/savings_goal.dart';
 import '../../goals/presentation/goal_form_screen.dart';
@@ -227,6 +230,24 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  Future<void> _openBackup() async {
+    widget.onSensitiveScreenChanged(true);
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (context) => BackupScreen(
+            service: BackupService(repository: widget.goalRepository),
+            fileGateway: const SystemBackupFileGateway(),
+            pinRepository: widget.pinRepository,
+            onRestored: _loadGoals,
+          ),
+        ),
+      );
+    } finally {
+      widget.onSensitiveScreenChanged(false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
@@ -263,6 +284,7 @@ class _MainShellState extends State<MainShell> {
         onConfigureBiometric: widget.onConfigureBiometric,
         onChangePin: _openChangePin,
         onDisableBiometric: _disableBiometric,
+        onBackup: _openBackup,
       ),
     ];
 
@@ -731,12 +753,14 @@ class _ProfilePage extends StatelessWidget {
     required this.onConfigureBiometric,
     required this.onChangePin,
     required this.onDisableBiometric,
+    required this.onBackup,
   });
 
   final bool biometricEnabled;
   final VoidCallback onConfigureBiometric;
   final VoidCallback onChangePin;
   final VoidCallback onDisableBiometric;
+  final VoidCallback onBackup;
 
   @override
   Widget build(BuildContext context) {
@@ -779,6 +803,20 @@ class _ProfilePage extends StatelessWidget {
               label: const Text('Aktifkan biometrik'),
             ),
           ],
+          const SizedBox(height: 24),
+          _InfoCard(
+            icon: Icons.enhanced_encryption_outlined,
+            title: 'Backup terenkripsi',
+            description:
+                'Simpan target dan transaksi ke file yang dilindungi kata sandi.',
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const Key('backup-settings-action'),
+            onPressed: onBackup,
+            icon: const Icon(Icons.backup_outlined),
+            label: const Text('Kelola backup'),
+          ),
           const SizedBox(height: 24),
           const _InfoCard(
             icon: Icons.storage_rounded,

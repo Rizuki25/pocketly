@@ -11,10 +11,13 @@ import '../core/security/screen_privacy_controller.dart';
 import '../core/database/database_encryption_key_repository.dart';
 import '../core/database/pocketly_database.dart';
 import '../features/dashboard/presentation/main_shell.dart';
+import '../features/backup/data/backup_file_gateway.dart';
+import '../features/backup/data/backup_service.dart';
 import '../features/goals/data/goal_repository.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/security/presentation/local_data_intro_screen.dart';
 import '../features/security/presentation/biometric_offer_screen.dart';
+import '../features/security/presentation/forgot_pin_screen.dart';
 import '../features/security/presentation/pin_lock_screen.dart';
 import '../features/security/presentation/pin_setup_screen.dart';
 import '../features/splash/presentation/splash_screen.dart';
@@ -27,6 +30,7 @@ enum _AppStage {
   pinSetup,
   biometricOffer,
   locked,
+  recovery,
   unlocked,
   storageError,
 }
@@ -38,6 +42,8 @@ class PocketlyApp extends StatefulWidget {
     this.biometricAuthenticator,
     this.screenPrivacyController,
     this.goalRepository,
+    this.secureStore,
+    this.deleteLocalDatabase,
     this.autoLockDuration = const Duration(minutes: 1),
     this.now,
     super.key,
@@ -48,6 +54,8 @@ class PocketlyApp extends StatefulWidget {
   final BiometricAuthenticator? biometricAuthenticator;
   final ScreenPrivacyController? screenPrivacyController;
   final GoalRepository? goalRepository;
+  final SecureKeyValueStore? secureStore;
+  final Future<void> Function()? deleteLocalDatabase;
   final Duration autoLockDuration;
   final DateTime Function()? now;
 
@@ -72,7 +80,7 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    final secureStore = FlutterSecureKeyValueStore();
+    final secureStore = widget.secureStore ?? FlutterSecureKeyValueStore();
     _secureStore = secureStore;
     _pinRepository =
         widget.pinRepository ?? PinAuthRepository(store: secureStore);
@@ -180,7 +188,8 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
     final stageSensitive = switch (stage) {
       _AppStage.pinSetup ||
       _AppStage.biometricOffer ||
-      _AppStage.locked => true,
+      _AppStage.locked ||
+      _AppStage.recovery => true,
       _ => false,
     };
     unawaited(
@@ -216,6 +225,26 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
       _stage = _AppStage.locked;
     });
     _applyScreenPrivacy(_AppStage.locked);
+  }
+
+  Future<void> _resetLocalData() async {
+    final repositoryFuture = _goalRepositoryFuture;
+    if (repositoryFuture != null) {
+      await (await repositoryFuture).close();
+      _goalRepositoryFuture = null;
+    }
+    await (widget.deleteLocalDatabase ?? PocketlyDatabase.deleteFile)();
+    await DatabaseEncryptionKeyRepository(store: _secureStore).deleteKey();
+    await _biometricPreferenceRepository.clear();
+    await _pinRepository.deleteCredential();
+    if (!mounted) return;
+    setState(() {
+      _biometricEnabled = false;
+      _sessionUnlocked = false;
+      _backgroundedAt = null;
+      _stage = _AppStage.onboarding;
+    });
+    _applyScreenPrivacy(_AppStage.onboarding);
   }
 
   Future<void> _finishBiometricSetup() async {
@@ -279,6 +308,19 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
         biometricAuthenticator: _biometricAuthenticator,
         biometricEnabled: _biometricEnabled,
         onUnlocked: _unlock,
+        onForgotPin: () => _setStage(_AppStage.recovery),
+      ),
+      _AppStage.recovery => ForgotPinScreen(
+        key: const ValueKey('forgot-pin'),
+        pinRepository: _pinRepository,
+        biometricAuthenticator: _biometricAuthenticator,
+        biometricEnabled: _biometricEnabled,
+        onPinReset: _finishSecurityChange,
+        onResetLocalData: _resetLocalData,
+        onBack: () => _setStage(_AppStage.locked),
+        backupServiceProvider: () async =>
+            BackupService(repository: await _getGoalRepository()),
+        backupFileGateway: const SystemBackupFileGateway(),
       ),
       _AppStage.unlocked => FutureBuilder<GoalRepository>(
         key: const ValueKey('main-shell-stage'),

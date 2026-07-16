@@ -44,6 +44,8 @@ class PinAuthRepository {
     return true;
   }
 
+  Future<void> deleteCredential() => _store.delete(_credentialKey);
+
   Future<void> createPin(String pin) async {
     final result = await _hasher.hash(pin);
     final credential = PinCredential(

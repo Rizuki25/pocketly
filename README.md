@@ -8,7 +8,7 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 
 - Platform awal: Android dan iOS.
 - Mode MVP: lokal tanpa akun/cloud.
-- Backup terenkripsi masuk cakupan MVP, tetapi belum diimplementasikan.
+- Backup lokal terenkripsi termasuk dalam MVP dan sudah tersedia.
 - PIN aplikasi: 6 digit.
 - Biometrik: opsional, dengan PIN sebagai fallback wajib.
 - Auto-lock default yang direncanakan: 1 menit.
@@ -70,12 +70,20 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 - Penonaktifan biometrik dengan autentikasi ulang menggunakan PIN.
 - Perubahan PIN atau biometrik mengunci kembali aplikasi; perubahan PIN juga
   menonaktifkan biometrik sampai pengguna mengaktifkannya kembali.
+- Pemulihan lupa PIN melalui biometrik yang sudah aktif dan terdaftar, tanpa
+  menghapus target maupun transaksi.
+- Fallback reset seluruh data lokal dengan peringatan dan konfirmasi ketik
+  `HAPUS` ketika pengguna tidak memiliki metode verifikasi yang valid.
+- Backup lokal terenkripsi berformat `.pocketly` dengan Argon2id dan
+  AES-256-GCM.
+- Pembuatan dan pemulihan backup dari menu Profil, termasuk autentikasi ulang,
+  validasi file, konfirmasi penggantian data, dan restore atomik.
+- Pemulihan lupa PIN melalui file backup dan kata sandi backup, lalu pembuatan
+  PIN baru tanpa menyertakan credential lama di dalam file.
 - Unit test dan widget test untuk alur utama.
 
 ### Belum selesai
 
-- Backup terenkripsi sebenarnya; layar saat ini baru menjelaskan rencana fiturnya.
-- Lupa PIN dan pemulihan akses mode lokal.
 - Notifikasi, laporan, ekspor, serta sinkronisasi.
 
 Setelah autentikasi berhasil, aplikasi membuka dashboard. Jika belum ada target,
@@ -228,6 +236,56 @@ Biometrik harus diuji pada perangkat nyata dengan sidik jari/wajah yang sudah te
 - Kegagalan PIN pada pengaturan keamanan memakai progressive lockout yang sama
   dengan layar login.
 
+## Lupa PIN dan pemulihan lokal
+
+- Tombol **Lupa PIN?** tersedia pada lock screen.
+- Jika biometrik sebelumnya aktif dan masih tersedia, pengguna dapat
+  memverifikasi biometrik lalu membuat PIN baru. Data tabungan tetap utuh.
+- Setelah PIN dipulihkan, biometrik dinonaktifkan dan aplikasi dikunci kembali;
+  pengguna masuk memakai PIN baru dan dapat mengaktifkan biometrik lagi.
+- Jika tersedia, pengguna dapat memilih file backup `.pocketly`, memasukkan kata
+  sandi backup, lalu membuat PIN baru. Credential PIN lama tidak berasal dari
+  backup.
+- Pocketly tidak menjanjikan pemulihan tanpa biometrik atau backup yang valid.
+- Fallback terakhir adalah reset seluruh data lokal dengan dua tahap
+  konfirmasi, termasuk mengetik `HAPUS`.
+- Reset lokal menutup database, menghapus file SQLCipher, kunci enkripsi,
+  credential PIN, serta preferensi biometrik sebelum kembali ke onboarding.
+- Jika salah satu operasi reset gagal, aplikasi tidak membuat database atau
+  credential pengganti secara diam-diam dan pengguna dapat mencoba kembali.
+
+## Backup lokal terenkripsi
+
+### Membuat backup
+
+1. Buka **Profil → Backup terenkripsi → Kelola backup**.
+2. Verifikasi PIN aktif.
+3. Buat kata sandi backup terpisah minimal 10 karakter dan konfirmasikan.
+4. Pocketly mengenkripsi seluruh target dan transaksi, lalu membuka share sheet
+   sistem untuk menyimpan file `.pocketly` ke lokasi pilihan pengguna.
+5. File sementara dibersihkan setelah share sheet selesai.
+
+### Memulihkan backup
+
+1. Dari menu backup, verifikasi PIN aktif lalu pilih file `.pocketly` berukuran
+   maksimal 20 MiB.
+2. Masukkan kata sandi backup.
+3. Tinjau jumlah target dan transaksi, lalu konfirmasi penggantian data lokal.
+4. Seluruh target dan transaksi diganti dalam satu transaksi database. File,
+   kata sandi, atau data yang tidak valid tidak mengubah data lama.
+
+Format backup versi 1 menggunakan Argon2id untuk derivasi kunci dan AES-256-GCM
+untuk kerahasiaan sekaligus autentikasi isi. Salt dan nonce dibuat acak untuk
+setiap file. Backup hanya berisi target, transaksi, dan metadata versi; PIN,
+hash PIN, preferensi biometrik, serta kunci database tidak pernah disertakan.
+Kata sandi backup tidak disimpan oleh Pocketly dan file tidak dapat dipulihkan
+jika kata sandinya hilang.
+
+Pemulihan lupa PIN dapat memakai backup tanpa mengetahui PIN aktif. Setelah isi
+backup tervalidasi dan dipulihkan, pengguna wajib membuat PIN baru. Ekspor
+menggunakan `share_plus 11.1.0`, pemilihan file menggunakan
+`file_selector 1.1.0`, dan file sementara menggunakan `path_provider 2.1.5`.
+
 ## Privasi layar
 
 - Android selalu mengaktifkan `FLAG_SECURE` ketika aplikasi masuk background
@@ -257,6 +315,10 @@ lib/
       pin_hasher.dart
       secure_key_value_store.dart
   features/
+    backup/
+      data/
+      domain/
+      presentation/
     onboarding/
     security/
     splash/
@@ -297,7 +359,7 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 38 test lulus.
+- Test: 51 test lulus.
 - Build Android debug: berhasil.
 - Build Android release dengan ProGuard SQLCipher: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
@@ -347,8 +409,8 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 ## Langkah berikutnya yang direkomendasikan
 
 1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
-2. Implementasikan lupa PIN dan pemulihan akses mode lokal.
-3. Implementasikan backup lokal terenkripsi.
+2. Implementasikan notifikasi lokal dan privasi notifikasi.
+3. Implementasikan laporan dan ekspor data sederhana.
 
 Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:
 

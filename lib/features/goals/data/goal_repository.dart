@@ -25,6 +25,11 @@ abstract interface class GoalRepository {
 
   Future<void> deleteTransaction(String id);
 
+  Future<void> replaceAllData({
+    required List<SavingsGoal> goals,
+    required List<SavingsTransaction> transactions,
+  });
+
   Future<void> close();
 }
 
@@ -166,6 +171,32 @@ class SqlCipherGoalRepository implements GoalRepository {
       );
       if (count != 1) throw StateError('Transaksi tidak ditemukan.');
       await _updateGoalBalance(txn, transaction.goalId, newBalance);
+    });
+  }
+
+  @override
+  Future<void> replaceAllData({
+    required List<SavingsGoal> goals,
+    required List<SavingsTransaction> transactions,
+  }) async {
+    _validateReplacement(goals, transactions);
+    await _database.database.transaction((txn) async {
+      await txn.delete('transactions');
+      await txn.delete('goals');
+      for (final goal in goals) {
+        await txn.insert(
+          'goals',
+          _toRow(goal),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+      }
+      for (final transaction in transactions) {
+        await txn.insert(
+          'transactions',
+          _transactionToRow(transaction),
+          conflictAlgorithm: ConflictAlgorithm.abort,
+        );
+      }
     });
   }
 
@@ -369,6 +400,24 @@ class MemoryGoalRepository implements GoalRepository {
   }
 
   @override
+  Future<void> replaceAllData({
+    required List<SavingsGoal> goals,
+    required List<SavingsTransaction> transactions,
+  }) async {
+    _validateReplacement(goals, transactions);
+    final nextGoals = {for (final goal in goals) goal.id: goal};
+    final nextTransactions = {
+      for (final transaction in transactions) transaction.id: transaction,
+    };
+    _goals
+      ..clear()
+      ..addAll(nextGoals);
+    _transactions
+      ..clear()
+      ..addAll(nextTransactions);
+  }
+
+  @override
   Future<void> close() async {}
 
   SavingsGoal _memoryGoal(String id) {
@@ -398,6 +447,31 @@ class MemoryGoalRepository implements GoalRepository {
 void _validateTransaction(SavingsTransaction transaction) {
   if (transaction.amount <= 0) {
     throw ArgumentError.value(transaction.amount, 'amount');
+  }
+}
+
+void _validateReplacement(
+  List<SavingsGoal> goals,
+  List<SavingsTransaction> transactions,
+) {
+  final goalIds = <String>{};
+  for (final goal in goals) {
+    if (goal.id.isEmpty ||
+        !goalIds.add(goal.id) ||
+        goal.name.trim().isEmpty ||
+        goal.targetAmount <= 0 ||
+        goal.currentBalance < 0) {
+      throw const FormatException('Data target backup tidak valid.');
+    }
+  }
+  final transactionIds = <String>{};
+  for (final transaction in transactions) {
+    if (transaction.id.isEmpty ||
+        !transactionIds.add(transaction.id) ||
+        !goalIds.contains(transaction.goalId) ||
+        transaction.amount <= 0) {
+      throw const FormatException('Data transaksi backup tidak valid.');
+    }
   }
 }
 

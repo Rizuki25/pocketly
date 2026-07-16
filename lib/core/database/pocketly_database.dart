@@ -33,6 +33,11 @@ class PocketlyDatabase {
     return PocketlyDatabase._(database);
   }
 
+  static Future<void> deleteFile() async {
+    final databasesPath = await getDatabasesPath();
+    await deleteDatabase(path.join(databasesPath, fileName));
+  }
+
   static Future<void> _createSchema(Database db, int version) async {
     await db.execute('''
       CREATE TABLE goals (

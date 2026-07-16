@@ -30,4 +30,6 @@ class DatabaseEncryptionKeyRepository {
     await _store.write(_storageKey, encoded);
     return encoded;
   }
+
+  Future<void> deleteKey() => _store.delete(_storageKey);
 }

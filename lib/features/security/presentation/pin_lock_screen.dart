@@ -13,6 +13,7 @@ class PinLockScreen extends StatefulWidget {
     required this.biometricAuthenticator,
     required this.biometricEnabled,
     required this.onUnlocked,
+    required this.onForgotPin,
     super.key,
   });
 
@@ -20,6 +21,7 @@ class PinLockScreen extends StatefulWidget {
   final BiometricAuthenticator biometricAuthenticator;
   final bool biometricEnabled;
   final VoidCallback onUnlocked;
+  final VoidCallback onForgotPin;
 
   @override
   State<PinLockScreen> createState() => _PinLockScreenState();
@@ -266,17 +268,27 @@ class _PinLockScreenState extends State<PinLockScreen> {
                       fontSize: 14,
                     ),
                   ),
-                  if (_biometricAvailable)
-                    TextButton.icon(
-                      key: const Key('biometric-retry'),
-                      onPressed: _isBiometricAuthenticating
-                          ? null
-                          : _authenticateBiometric,
-                      icon: const Icon(Icons.fingerprint_rounded),
-                      label: const Text('Gunakan biometrik'),
-                    )
-                  else
-                    SizedBox(height: compact ? 8 : 12),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    children: [
+                      if (_biometricAvailable)
+                        TextButton.icon(
+                          key: const Key('biometric-retry'),
+                          onPressed: _isBiometricAuthenticating
+                              ? null
+                              : _authenticateBiometric,
+                          icon: const Icon(Icons.fingerprint_rounded),
+                          label: const Text('Gunakan biometrik'),
+                        ),
+                      TextButton(
+                        key: const Key('forgot-pin-action'),
+                        onPressed: _isBiometricAuthenticating
+                            ? null
+                            : widget.onForgotPin,
+                        child: const Text('Lupa PIN?'),
+                      ),
+                    ],
+                  ),
                   SizedBox(height: compact ? 14 : 24),
                   PocketlyPinDots(
                     length: _input.length,
