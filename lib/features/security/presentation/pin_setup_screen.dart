@@ -1,14 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/security/pin_auth_repository.dart';
 import '../domain/pin_policy.dart';
+import 'widgets/pin_input_widgets.dart';
 
 enum _PinStep { create, confirm, success }
 
 class PinSetupScreen extends StatefulWidget {
-  const PinSetupScreen({required this.onBack, super.key});
+  const PinSetupScreen({
+    required this.onBack,
+    required this.onCompleted,
+    required this.pinRepository,
+    super.key,
+  });
 
   final VoidCallback onBack;
+  final VoidCallback onCompleted;
+  final PinAuthRepository pinRepository;
 
   @override
   State<PinSetupScreen> createState() => _PinSetupScreenState();
@@ -19,6 +28,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
   String _input = '';
   String? _firstPin;
   String? _error;
+  bool _isSaving = false;
 
   void _enterDigit(String digit) {
     if (_input.length >= 6 || _step == _PinStep.success) return;
@@ -36,7 +46,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
     });
   }
 
-  void _continue() {
+  Future<void> _continue() async {
     if (_step == _PinStep.create) {
       final validationError = PinPolicy.validate(_input);
       if (validationError != null) {
@@ -63,10 +73,24 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
       return;
     }
 
+    setState(() => _isSaving = true);
+    try {
+      await widget.pinRepository.createPin(_input);
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _input = '';
+        _error = 'PIN belum dapat disimpan dengan aman. Coba lagi.';
+        _isSaving = false;
+      });
+      return;
+    }
+    if (!mounted) return;
     setState(() {
       _input = '';
       _firstPin = null;
       _error = null;
+      _isSaving = false;
       _step = _PinStep.success;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -74,8 +98,8 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
     });
   }
 
-  void _showPinSuccessDialog() {
-    showGeneralDialog<void>(
+  Future<void> _showPinSuccessDialog() async {
+    final continueToBiometric = await showGeneralDialog<bool>(
       context: context,
       barrierDismissible: false,
       barrierLabel: 'PIN berhasil dibuat',
@@ -99,6 +123,7 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
         );
       },
     );
+    if (mounted && continueToBiometric == true) widget.onCompleted();
   }
 
   void _goBack() {
@@ -128,10 +153,13 @@ class _PinSetupScreenState extends State<PinSetupScreen> {
                   step: _step,
                   inputLength: _input.length,
                   error: _error,
+                  isSaving: _isSaving,
                   onBack: _goBack,
                   onDigit: _enterDigit,
                   onDelete: _removeDigit,
-                  onContinue: _input.length == 6 ? _continue : null,
+                  onContinue: _input.length == 6 && !_isSaving
+                      ? _continue
+                      : null,
                 ),
         ),
       ),
@@ -144,6 +172,7 @@ class _PinEntryView extends StatelessWidget {
     required this.step,
     required this.inputLength,
     required this.error,
+    required this.isSaving,
     required this.onBack,
     required this.onDigit,
     required this.onDelete,
@@ -154,6 +183,7 @@ class _PinEntryView extends StatelessWidget {
   final _PinStep step;
   final int inputLength;
   final String? error;
+  final bool isSaving;
   final VoidCallback onBack;
   final ValueChanged<String> onDigit;
   final VoidCallback onDelete;
@@ -220,7 +250,10 @@ class _PinEntryView extends StatelessWidget {
                       ),
                     ),
                     SizedBox(height: compact ? 14 : 24),
-                    _PinDots(length: inputLength, hasError: error != null),
+                    PocketlyPinDots(
+                      length: inputLength,
+                      hasError: error != null,
+                    ),
                     SizedBox(
                       height: compact ? 34 : 46,
                       child: error == null
@@ -241,8 +274,9 @@ class _PinEntryView extends StatelessWidget {
                     Expanded(
                       child: Align(
                         alignment: Alignment.bottomCenter,
-                        child: _PinKeypad(
+                        child: PocketlyPinKeypad(
                           compact: compact,
+                          enabled: !isSaving,
                           onDigit: onDigit,
                           onDelete: onDelete,
                         ),
@@ -252,7 +286,16 @@ class _PinEntryView extends StatelessWidget {
                     FilledButton(
                       key: const Key('pin-continue'),
                       onPressed: onContinue,
-                      child: Text(confirming ? 'Konfirmasi PIN' : 'Lanjut'),
+                      child: isSaving
+                          ? const SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: AppColors.ink,
+                              ),
+                            )
+                          : Text(confirming ? 'Konfirmasi PIN' : 'Lanjut'),
                     ),
                   ],
                 ),
@@ -261,147 +304,6 @@ class _PinEntryView extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _PinDots extends StatelessWidget {
-  const _PinDots({required this.length, required this.hasError});
-
-  final int length;
-  final bool hasError;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      label: '$length dari 6 digit PIN terisi',
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(6, (index) {
-          final filled = index < length;
-          return AnimatedContainer(
-            duration: const Duration(milliseconds: 160),
-            width: filled ? 18 : 14,
-            height: filled ? 18 : 14,
-            margin: const EdgeInsets.symmetric(horizontal: 7),
-            decoration: BoxDecoration(
-              color: filled ? AppColors.primary : AppColors.background,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: hasError ? AppColors.ink : AppColors.muted,
-                width: 2,
-              ),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-}
-
-class _PinKeypad extends StatelessWidget {
-  const _PinKeypad({
-    required this.compact,
-    required this.onDigit,
-    required this.onDelete,
-  });
-
-  final bool compact;
-  final ValueChanged<String> onDigit;
-  final VoidCallback onDelete;
-
-  @override
-  Widget build(BuildContext context) {
-    const rows = [
-      ['1', '2', '3'],
-      ['4', '5', '6'],
-      ['7', '8', '9'],
-    ];
-    final buttonSize = compact ? 48.0 : 58.0;
-    final rowGap = compact ? 5.0 : 9.0;
-
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 310),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          for (final row in rows) ...[
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: row
-                  .map(
-                    (digit) => _NumberButton(
-                      digit: digit,
-                      size: buttonSize,
-                      onPressed: () => onDigit(digit),
-                    ),
-                  )
-                  .toList(),
-            ),
-            SizedBox(height: rowGap),
-          ],
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              SizedBox(width: buttonSize, height: buttonSize),
-              _NumberButton(
-                digit: '0',
-                size: buttonSize,
-                onPressed: () => onDigit('0'),
-              ),
-              SizedBox(
-                width: buttonSize,
-                height: buttonSize,
-                child: IconButton(
-                  key: const Key('pin-delete'),
-                  onPressed: onDelete,
-                  tooltip: 'Hapus digit',
-                  icon: const Icon(Icons.backspace_outlined),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _NumberButton extends StatelessWidget {
-  const _NumberButton({
-    required this.digit,
-    required this.size,
-    required this.onPressed,
-  });
-
-  final String digit;
-  final double size;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: Material(
-        color: AppColors.muted.withValues(alpha: 0.5),
-        shape: const CircleBorder(),
-        child: InkWell(
-          key: Key('pin-key-$digit'),
-          onTap: onPressed,
-          customBorder: const CircleBorder(),
-          child: Center(
-            child: Text(
-              digit,
-              style: const TextStyle(
-                color: AppColors.ink,
-                fontSize: 21,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ),
-        ),
-      ),
     );
   }
 }
@@ -578,7 +480,7 @@ class _PinSuccessDialog extends StatelessWidget {
                         const SizedBox(height: 26),
                         FilledButton(
                           key: const Key('pin-success-continue'),
-                          onPressed: () => Navigator.of(context).pop(),
+                          onPressed: () => Navigator.of(context).pop(true),
                           child: const Text('Lanjutkan'),
                         ),
                         const SizedBox(height: 12),

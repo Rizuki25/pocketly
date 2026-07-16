@@ -1,16 +1,250 @@
-# pocketly
+# Pocketly
 
-A new Flutter project.
+Pocketly adalah aplikasi Flutter untuk mencatat dan mendampingi target tabungan pribadi. MVP bersifat **local-first**: aplikasi tidak menyimpan, menahan, atau memindahkan uang sungguhan.
 
-## Getting Started
+Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow.md` dan README ini sebelum melanjutkan implementasi pada sesi baru.
 
-This project is a starting point for a Flutter application.
+## Keputusan produk saat ini
 
-A few resources to get you started if this is your first Flutter project:
+- Platform awal: Android dan iOS.
+- Mode MVP: lokal tanpa akun/cloud.
+- Backup terenkripsi masuk cakupan MVP, tetapi belum diimplementasikan.
+- PIN aplikasi: 6 digit.
+- Biometrik: opsional, dengan PIN sebagai fallback wajib.
+- Auto-lock default yang direncanakan: 1 menit.
+- State management belum dipilih karena fitur yang ada masih dikelola secara lokal per layar.
+- Palet visual utama:
+  - Background: `#FFFFFF`
+  - Primary/accent: `#9A6AFF`
+  - Teks/ink: `#1E2029`
+  - Border/surface lembut: `#E3E3E3`
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+## Status implementasi
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+### Sudah selesai
+
+- Splash screen animasi dengan logo Pocketly.
+- Onboarding tiga halaman.
+- Penjelasan mode lokal dan backup.
+- Pembuatan serta konfirmasi PIN 6 digit.
+- Validasi PIN lemah.
+- Popup PIN berhasil dibuat.
+- Hash PIN Argon2id dengan salt acak.
+- Penyimpanan credential melalui Keystore/Keychain.
+- Lock screen PIN untuk pengguna lama.
+- Progressive PIN lockout yang bertahan setelah restart aplikasi.
+- Layar penawaran biometrik.
+- Autentikasi biometrik native menggunakan `local_auth`.
+- Auto-prompt biometrik satu kali pada lock screen.
+- Penanganan biometrik gagal, dibatalkan, tidak tersedia, belum terdaftar, dan lockout.
+- PIN selalu tersedia sebagai fallback.
+- Pengguna yang sudah memiliki PIN dapat mengaktifkan biometrik setelah masuk.
+- Unit test dan widget test untuk alur utama.
+
+### Belum selesai
+
+- Dashboard dan navigasi utama.
+- CRUD target tabungan.
+- Setoran, penarikan, dan riwayat transaksi.
+- Database lokal terenkripsi untuk data tabungan.
+- Backup terenkripsi sebenarnya; layar saat ini baru menjelaskan rencana fiturnya.
+- Auto-lock berbasis lifecycle/background.
+- Perlindungan recent apps dan screenshot layar sensitif.
+- Pengaturan keamanan, termasuk mengubah PIN dan menonaktifkan biometrik.
+- Lupa PIN dan pemulihan akses mode lokal.
+- Notifikasi, laporan, ekspor, serta sinkronisasi.
+
+Setelah autentikasi berhasil, aplikasi sementara menampilkan layar **Akses berhasil**. Layar tersebut adalah placeholder sampai dashboard dibangun.
+
+## Alur aplikasi saat ini
+
+### Pengguna baru
+
+```text
+Splash
+  -> Onboarding
+  -> Penjelasan data lokal dan backup
+  -> Buat PIN
+  -> Konfirmasi PIN
+  -> Popup berhasil
+  -> Penawaran biometrik
+  -> Placeholder akses berhasil
+```
+
+### Pengguna lama
+
+```text
+Bootstrap credential
+  -> Biometrik otomatis satu kali (jika aktif dan tersedia)
+  -> PIN sebagai fallback
+  -> Placeholder akses berhasil
+```
+
+Jika biometrik dibatalkan, dialog tidak muncul kembali secara otomatis. Pengguna dapat menekan **Gunakan biometrik** atau langsung memasukkan PIN.
+
+## Keamanan PIN
+
+Implementasi utama berada di `lib/core/security/`.
+
+- Algoritma: Argon2id melalui `cryptography`.
+- Salt: 16 byte dari generator acak aman.
+- Parameter produksi:
+  - Memory: 19 MiB (`19 * 1024` blok KiB).
+  - Iterations: 2.
+  - Parallelism: 1.
+  - Hash length: 32 byte.
+- Hash dijalankan pada isolate agar UI tidak tersendat.
+- Verifikasi hash menggunakan perbandingan constant-time.
+- PIN asli tidak disimpan dan tidak dicetak ke log.
+- Credential menyimpan versi skema, algoritma, parameter KDF, hash, salt, jumlah kegagalan, waktu lockout, dan waktu perubahan PIN.
+- Secure storage Android menggunakan `flutter_secure_storage`; backup aplikasi Android dinonaktifkan agar data terenkripsi tidak dipulihkan tanpa kunci Keystore yang sesuai.
+- iOS menggunakan Keychain dengan akses `unlocked_this_device`.
+
+PIN berikut ditolak:
+
+- Digit sama, misalnya `111111`.
+- Urutan naik/turun, misalnya `123456` dan `654321`.
+- Pola tiga digit berulang, misalnya `123123`.
+
+Progressive lockout:
+
+| Kegagalan berturut-turut | Lockout |
+|---:|---:|
+| 1-4 | Tidak ada |
+| 5 | 30 detik |
+| 6 | 1 menit |
+| 7 | 5 menit |
+| 8+ | 15 menit |
+
+Catatan: perlindungan manipulasi jam perangkat belum sepenuhnya dapat dijamin pada mode lokal tanpa sumber waktu tepercaya. Ini masih menjadi item security hardening.
+
+## Biometrik
+
+- Paket: `local_auth ^3.0.1`.
+- Android minimum SDK: 24.
+- iOS deployment target: 13.0.
+- Android menggunakan `FlutterFragmentActivity` dan izin `USE_BIOMETRIC`.
+- iOS memiliki `NSFaceIDUsageDescription`.
+- Autentikasi menggunakan `biometricOnly: true`, sehingga fallback PIN perangkat tidak menggantikan PIN aplikasi Pocketly.
+- Dialog berasal dari sistem operasi; tidak ada dialog sidik jari buatan aplikasi.
+- Adapter native: `lib/core/security/local_auth_biometric_authenticator.dart`.
+- Kontrak yang mudah diuji: `lib/core/security/biometric_authenticator.dart`.
+
+Biometrik harus diuji pada perangkat nyata dengan sidik jari/wajah yang sudah terdaftar.
+
+## Struktur penting
+
+```text
+lib/
+  app/
+    pocketly_app.dart
+    theme/
+  core/
+    security/
+      biometric_authenticator.dart
+      biometric_preference_repository.dart
+      local_auth_biometric_authenticator.dart
+      pin_auth_repository.dart
+      pin_credential.dart
+      pin_hasher.dart
+      secure_key_value_store.dart
+  features/
+    onboarding/
+    security/
+    splash/
+  main.dart
+
+assets/
+  branding/
+    pocketly_logo.png
+    pocketly_logo_splash.png
+
+test/
+  pin_auth_repository_test.dart
+  pin_policy_test.dart
+  widget_test.dart
+```
+
+## Menjalankan proyek
+
+Prasyarat:
+
+- Flutter dengan Dart `^3.9.2`.
+- Android API 24 atau lebih baru.
+- Untuk biometrik, gunakan perangkat fisik atau emulator yang telah dikonfigurasi biometriknya.
+
+```powershell
+flutter pub get
+flutter run
+```
+
+Untuk menjalankan verifikasi:
+
+```powershell
+dart analyze lib test
+flutter test
+flutter build apk --debug
+```
+
+Status verifikasi terakhir:
+
+- Analyzer: tidak ada masalah.
+- Test: 14 test lulus.
+- Build Android debug: berhasil.
+- APK: `build/app/outputs/flutter-apk/app-debug.apk`.
+- Build iOS belum diverifikasi karena lingkungan pengembangan saat ini menggunakan Windows.
+
+## Catatan build Windows lintas drive
+
+Proyek berada di drive `D:`, sementara Pub cache berada di drive `C:`. Kotlin incremental compiler gagal membuat path relatif untuk source plugin `local_auth_android` dan menghasilkan error seperti:
+
+```text
+this and base files have different roots
+```
+
+Perbaikan permanen sudah ditambahkan ke `android/gradle.properties`:
+
+```properties
+kotlin.incremental=false
+```
+
+Konsekuensinya hanya kompilasi Kotlin sedikit lebih lambat. Runtime aplikasi tidak terpengaruh.
+
+Jika cache lama kembali bermasalah, jalankan:
+
+```powershell
+flutter clean
+flutter pub get --offline
+flutter build apk --debug
+```
+
+Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
+
+## Checklist pengujian biometrik nyata
+
+1. Daftarkan sidik jari atau wajah di pengaturan perangkat.
+2. Jalankan aplikasi dan buat PIN kuat.
+3. Pada layar penawaran, tekan **Aktifkan biometrik**.
+4. Verifikasi bahwa dialog native muncul.
+5. Tutup lalu buka ulang aplikasi.
+6. Pastikan biometrik dipicu hanya satu kali secara otomatis.
+7. Batalkan dialog dan pastikan aplikasi tetap berada di lock screen.
+8. Masuk menggunakan PIN setelah biometrik dibatalkan atau gagal.
+9. Uji biometrik yang tidak cocok dan tombol coba lagi.
+10. Uji perangkat tanpa biometrik terdaftar.
+11. Uji temporary/permanent biometric lockout bila perangkat memungkinkan.
+
+## Langkah berikutnya yang direkomendasikan
+
+1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
+2. Implementasi auto-lock 1 menit dan pengelolaan lifecycle aplikasi.
+3. Tutupi data pada recent apps serta blok screenshot pada layar sensitif.
+4. Buat dashboard kosong dan struktur navigasi utama.
+5. Tentukan database lokal terenkripsi dan mulai CRUD target tabungan.
+
+Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:
+
+```text
+Baca workflow.md dan README.md terlebih dahulu, lalu lanjutkan dari bagian
+"Langkah berikutnya yang direkomendasikan" tanpa mengulang fitur yang sudah selesai.
+```
