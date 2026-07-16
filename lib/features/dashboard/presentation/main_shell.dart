@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../../core/security/pin_auth_repository.dart';
 import '../../goals/data/goal_repository.dart';
 import '../../goals/domain/savings_goal.dart';
 import '../../goals/presentation/goal_form_screen.dart';
@@ -8,18 +9,26 @@ import '../../goals/presentation/goal_detail_screen.dart';
 import '../../goals/presentation/goals_page.dart';
 import '../../transactions/domain/savings_transaction.dart';
 import '../../transactions/presentation/transaction_form_screen.dart';
+import '../../security/presentation/change_pin_screen.dart';
+import '../../security/presentation/pin_reauthentication_screen.dart';
 import 'widgets/curved_notched_bottom_bar.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({
     required this.biometricEnabled,
     required this.onConfigureBiometric,
+    required this.pinRepository,
+    required this.onSecurityChanged,
+    required this.onSensitiveScreenChanged,
     required this.goalRepository,
     super.key,
   });
 
   final bool biometricEnabled;
   final VoidCallback onConfigureBiometric;
+  final PinAuthRepository pinRepository;
+  final Future<void> Function() onSecurityChanged;
+  final ValueChanged<bool> onSensitiveScreenChanged;
   final GoalRepository goalRepository;
 
   @override
@@ -163,6 +172,61 @@ class _MainShellState extends State<MainShell> {
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _openChangePin() async {
+    widget.onSensitiveScreenChanged(true);
+    try {
+      await Navigator.of(context).push<void>(
+        MaterialPageRoute(
+          builder: (context) => ChangePinScreen(
+            pinRepository: widget.pinRepository,
+            onChanged: widget.onSecurityChanged,
+          ),
+        ),
+      );
+    } finally {
+      widget.onSensitiveScreenChanged(false);
+    }
+  }
+
+  Future<void> _disableBiometric() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Nonaktifkan biometrik?'),
+        content: const Text(
+          'Setelah dinonaktifkan, Pocketly hanya dapat dibuka menggunakan PIN.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            key: const Key('confirm-disable-biometric'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Lanjutkan'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    widget.onSensitiveScreenChanged(true);
+    try {
+      final verified = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (context) => PinReauthenticationScreen(
+            pinRepository: widget.pinRepository,
+            title: 'Nonaktifkan biometrik',
+            description: 'Masukkan PIN untuk mengonfirmasi perubahan keamanan.',
+          ),
+        ),
+      );
+      if (verified == true) await widget.onSecurityChanged();
+    } finally {
+      widget.onSensitiveScreenChanged(false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
@@ -197,6 +261,8 @@ class _MainShellState extends State<MainShell> {
       _ProfilePage(
         biometricEnabled: widget.biometricEnabled,
         onConfigureBiometric: widget.onConfigureBiometric,
+        onChangePin: _openChangePin,
+        onDisableBiometric: _disableBiometric,
       ),
     ];
 
@@ -663,10 +729,14 @@ class _ProfilePage extends StatelessWidget {
   const _ProfilePage({
     required this.biometricEnabled,
     required this.onConfigureBiometric,
+    required this.onChangePin,
+    required this.onDisableBiometric,
   });
 
   final bool biometricEnabled;
   final VoidCallback onConfigureBiometric;
+  final VoidCallback onChangePin;
+  final VoidCallback onDisableBiometric;
 
   @override
   Widget build(BuildContext context) {
@@ -684,6 +754,22 @@ class _ProfilePage extends StatelessWidget {
                 ? 'Kamu dapat membuka Pocketly dengan biometrik.'
                 : 'Aktifkan biometrik untuk membuka Pocketly lebih cepat.',
           ),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            key: const Key('change-pin-action'),
+            onPressed: onChangePin,
+            icon: const Icon(Icons.password_rounded),
+            label: const Text('Ubah PIN'),
+          ),
+          if (biometricEnabled) ...[
+            const SizedBox(height: 10),
+            TextButton.icon(
+              key: const Key('disable-biometric-action'),
+              onPressed: onDisableBiometric,
+              icon: const Icon(Icons.fingerprint_rounded),
+              label: const Text('Nonaktifkan biometrik'),
+            ),
+          ],
           if (!biometricEnabled) ...[
             const SizedBox(height: 14),
             FilledButton.icon(

@@ -66,12 +66,15 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
   transaksi database sehingga tidak dapat tersimpan separuh.
 - Pencegahan transaksi ganda menggunakan ID transaksi unik dan tombol simpan
   yang dinonaktifkan selama operasi berlangsung.
+- Pengaturan keamanan untuk mengubah PIN setelah memverifikasi PIN aktif.
+- Penonaktifan biometrik dengan autentikasi ulang menggunakan PIN.
+- Perubahan PIN atau biometrik mengunci kembali aplikasi; perubahan PIN juga
+  menonaktifkan biometrik sampai pengguna mengaktifkannya kembali.
 - Unit test dan widget test untuk alur utama.
 
 ### Belum selesai
 
 - Backup terenkripsi sebenarnya; layar saat ini baru menjelaskan rencana fiturnya.
-- Pengaturan keamanan, termasuk mengubah PIN dan menonaktifkan biometrik.
 - Lupa PIN dan pemulihan akses mode lokal.
 - Notifikasi, laporan, ekspor, serta sinkronisasi.
 
@@ -213,6 +216,18 @@ Catatan: perlindungan manipulasi jam perangkat belum sepenuhnya dapat dijamin pa
 
 Biometrik harus diuji pada perangkat nyata dengan sidik jari/wajah yang sudah terdaftar.
 
+## Pengaturan keamanan
+
+- Menu **Profil** menyediakan tindakan **Ubah PIN**.
+- Pengguna wajib memasukkan PIN aktif sebelum membuat PIN baru.
+- PIN baru harus memenuhi kebijakan PIN kuat dan dikonfirmasi dua kali.
+- Setelah PIN berubah, biometrik dinonaktifkan dan Pocketly dikunci kembali.
+- Penonaktifan biometrik memerlukan konfirmasi serta verifikasi PIN.
+- Layar ubah PIN dan autentikasi ulang ditandai sebagai layar sensitif sehingga
+  perlindungan screenshot mengikuti kebijakan platform.
+- Kegagalan PIN pada pengaturan keamanan memakai progressive lockout yang sama
+  dengan layar login.
+
 ## Privasi layar
 
 - Android selalu mengaktifkan `FLAG_SECURE` ketika aplikasi masuk background
@@ -282,7 +297,7 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 35 test lulus.
+- Test: 38 test lulus.
 - Build Android debug: berhasil.
 - Build Android release dengan ProGuard SQLCipher: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
@@ -332,8 +347,8 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 ## Langkah berikutnya yang direkomendasikan
 
 1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
-2. Tambahkan pengaturan keamanan untuk mengubah PIN dan menonaktifkan biometrik.
-3. Implementasikan lupa PIN dan pemulihan akses mode lokal.
+2. Implementasikan lupa PIN dan pemulihan akses mode lokal.
+3. Implementasikan backup lokal terenkripsi.
 
 Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:
 

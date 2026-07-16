@@ -66,6 +66,7 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
   bool _biometricEnabled = false;
   bool _sessionUnlocked = false;
   DateTime? _backgroundedAt;
+  bool _routeSensitive = false;
 
   @override
   void initState() {
@@ -176,13 +177,45 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
   }
 
   void _applyScreenPrivacy(_AppStage stage) {
-    final sensitive = switch (stage) {
+    final stageSensitive = switch (stage) {
       _AppStage.pinSetup ||
       _AppStage.biometricOffer ||
       _AppStage.locked => true,
       _ => false,
     };
-    unawaited(_screenPrivacyController.setSensitiveScreen(sensitive));
+    unawaited(
+      _screenPrivacyController.setSensitiveScreen(
+        stageSensitive || _routeSensitive,
+      ),
+    );
+  }
+
+  void _setRouteSensitive(bool sensitive) {
+    _routeSensitive = sensitive;
+    _applyScreenPrivacy(_stage);
+  }
+
+  Future<void> _finishSecurityChange() async {
+    try {
+      await _biometricPreferenceRepository.setEnabled(false);
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _sessionUnlocked = false;
+        _backgroundedAt = null;
+        _stage = _AppStage.storageError;
+      });
+      _applyScreenPrivacy(_AppStage.storageError);
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _biometricEnabled = false;
+      _sessionUnlocked = false;
+      _backgroundedAt = null;
+      _stage = _AppStage.locked;
+    });
+    _applyScreenPrivacy(_AppStage.locked);
   }
 
   Future<void> _finishBiometricSetup() async {
@@ -259,6 +292,9 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
           return MainShell(
             biometricEnabled: _biometricEnabled,
             onConfigureBiometric: () => _setStage(_AppStage.biometricOffer),
+            pinRepository: _pinRepository,
+            onSecurityChanged: _finishSecurityChange,
+            onSensitiveScreenChanged: _setRouteSensitive,
             goalRepository: repository,
           );
         },

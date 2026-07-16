@@ -327,6 +327,47 @@ void main() {
     await tester.pumpAndSettle();
     expect(finished, isTrue);
   });
+
+  testWidgets('disabling biometric requires PIN and locks the app', (
+    tester,
+  ) async {
+    final store = MemorySecureKeyValueStore();
+    final repository = _testRepository(store);
+    final preferenceRepository = BiometricPreferenceRepository(store: store);
+    await repository.createPin('135790');
+    await preferenceRepository.setEnabled(true);
+
+    await tester.pumpWidget(
+      _testApp(
+        store: store,
+        pinRepository: repository,
+        biometricPreferenceRepository: preferenceRepository,
+        biometricAuthenticator: _FakeBiometricAuthenticator(
+          authResults: [BiometricAuthStatus.success],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('main-shell')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('nav-profile')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('disable-biometric-action')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('confirm-disable-biometric')));
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const Key('pin-reauthentication-screen')),
+      findsOneWidget,
+    );
+
+    await _enterPin(tester, '135790');
+    await tester.tap(find.byKey(const Key('pin-reauthenticate')));
+    await tester.pumpAndSettle();
+
+    expect(await preferenceRepository.isEnabled(), isFalse);
+    expect(find.byKey(const Key('pin-lock-screen')), findsOneWidget);
+  });
 }
 
 Future<void> _enterPin(WidgetTester tester, String pin) async {
