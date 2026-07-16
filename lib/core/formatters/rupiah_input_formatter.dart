@@ -22,6 +22,9 @@ class RupiahInputFormatter extends TextInputFormatter {
 
 String formatRupiahDigits(int amount) => formatRupiahText(amount.toString());
 
+int parseRupiahDigits(String value) =>
+    int.tryParse(value.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
+
 String formatRupiahText(String digits) {
   if (digits.isEmpty) return '';
   final buffer = StringBuffer();

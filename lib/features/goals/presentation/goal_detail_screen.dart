@@ -1,24 +1,160 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../transactions/domain/savings_transaction.dart';
+import '../../transactions/presentation/transaction_form_screen.dart';
+import '../data/goal_repository.dart';
 import '../domain/savings_goal.dart';
 import '../domain/savings_plan_calculator.dart';
 
-class GoalDetailScreen extends StatelessWidget {
+class GoalDetailScreen extends StatefulWidget {
   const GoalDetailScreen({
     required this.goal,
+    required this.repository,
     required this.onEdit,
+    required this.onChanged,
     this.now,
     super.key,
   });
 
   final SavingsGoal goal;
-  final VoidCallback onEdit;
+  final GoalRepository repository;
+  final Future<void> Function(SavingsGoal goal) onEdit;
+  final Future<void> Function() onChanged;
   final DateTime? now;
 
   @override
+  State<GoalDetailScreen> createState() => _GoalDetailScreenState();
+}
+
+class _GoalDetailScreenState extends State<GoalDetailScreen> {
+  late SavingsGoal _goal;
+  List<SavingsTransaction> _transactions = const [];
+  bool _loadingTransactions = true;
+  String? _historyError;
+
+  @override
+  void initState() {
+    super.initState();
+    _goal = widget.goal;
+    _reload();
+  }
+
+  Future<void> _reload() async {
+    try {
+      final goals = await widget.repository.getAll();
+      final transactions = await widget.repository.getTransactions(
+        goalId: widget.goal.id,
+      );
+      if (!mounted) return;
+      final refreshed = goals.where((goal) => goal.id == widget.goal.id);
+      setState(() {
+        if (refreshed.isNotEmpty) _goal = refreshed.first;
+        _transactions = transactions;
+        _loadingTransactions = false;
+        _historyError = null;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _loadingTransactions = false;
+        _historyError = 'Riwayat belum dapat dibuka.';
+      });
+    }
+  }
+
+  Future<void> _openTransaction(
+    SavingsTransactionType type, [
+    SavingsTransaction? transaction,
+  ]) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => TransactionFormScreen(
+          goals: [_goal],
+          initialGoal: _goal,
+          type: type,
+          initialTransaction: transaction,
+          onSave: (value) => transaction == null
+              ? widget.repository.recordTransaction(value)
+              : widget.repository.updateTransaction(value),
+        ),
+      ),
+    );
+    if (saved == true) {
+      await widget.onChanged();
+      await _reload();
+    }
+  }
+
+  Future<void> _deleteTransaction(SavingsTransaction transaction) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus transaksi?'),
+        content: const Text(
+          'Saldo target akan dihitung ulang setelah transaksi dihapus.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            key: const Key('confirm-delete-transaction'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await widget.repository.deleteTransaction(transaction.id);
+      await widget.onChanged();
+      await _reload();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Transaksi dihapus.'),
+          action: SnackBarAction(
+            label: 'Batalkan',
+            onPressed: () => _restoreTransaction(transaction),
+          ),
+        ),
+      );
+    } on Object {
+      if (mounted) _showMessage('Transaksi belum dapat dihapus.');
+    }
+  }
+
+  Future<void> _restoreTransaction(SavingsTransaction transaction) async {
+    try {
+      await widget.repository.recordTransaction(transaction);
+      await widget.onChanged();
+      await _reload();
+    } on Object {
+      if (mounted) _showMessage('Transaksi tidak dapat dipulihkan.');
+    }
+  }
+
+  void _showMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  Future<void> _editGoal() async {
+    await widget.onEdit(_goal);
+    await _reload();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final plan = const SavingsPlanCalculator().calculate(goal, asOf: now);
+    final plan = const SavingsPlanCalculator().calculate(
+      _goal,
+      asOf: widget.now,
+    );
+    final archived = _goal.status == SavingsGoalStatus.archived;
     return Scaffold(
       key: const Key('goal-detail-screen'),
       backgroundColor: const Color(0xFFF8F7FC),
@@ -30,7 +166,7 @@ class GoalDetailScreen extends StatelessWidget {
           IconButton(
             key: const Key('goal-detail-edit'),
             tooltip: 'Ubah target',
-            onPressed: onEdit,
+            onPressed: _editGoal,
             icon: const Icon(Icons.edit_outlined),
           ),
         ],
@@ -39,11 +175,50 @@ class GoalDetailScreen extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 8, 20, 36),
           children: [
-            _ProgressCard(goal: goal),
+            _ProgressCard(goal: _goal),
             const SizedBox(height: 18),
-            _PlanCard(goal: goal, plan: plan),
+            if (!archived) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      key: const Key('goal-add-deposit'),
+                      onPressed: () =>
+                          _openTransaction(SavingsTransactionType.deposit),
+                      icon: const Icon(Icons.south_west_rounded),
+                      label: const Text('Setoran'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      key: const Key('goal-add-withdrawal'),
+                      onPressed: _goal.currentBalance == 0
+                          ? null
+                          : () => _openTransaction(
+                              SavingsTransactionType.withdrawal,
+                            ),
+                      icon: const Icon(Icons.north_east_rounded),
+                      label: const Text('Tarik'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+            ],
+            _PlanCard(goal: _goal, plan: plan),
             const SizedBox(height: 18),
-            _DetailCard(goal: goal),
+            _TransactionHistoryCard(
+              transactions: _transactions,
+              loading: _loadingTransactions,
+              error: _historyError,
+              onRetry: _reload,
+              onEdit: (transaction) =>
+                  _openTransaction(transaction.type, transaction),
+              onDelete: _deleteTransaction,
+            ),
+            const SizedBox(height: 18),
+            _DetailCard(goal: _goal),
           ],
         ),
       ),
@@ -190,6 +365,150 @@ class _PlanCard extends StatelessWidget {
       '${_rupiah(plan.recommendedDeposit!)} per ${_periodLabel(goal.frequency)}',
       'Simpan selama ${plan.periodCount} periode untuk menutup sisa ${_rupiah(plan.remainingAmount)} sebelum tenggat.',
       Icons.auto_graph_rounded,
+    );
+  }
+}
+
+class _TransactionHistoryCard extends StatelessWidget {
+  const _TransactionHistoryCard({
+    required this.transactions,
+    required this.loading,
+    required this.error,
+    required this.onRetry,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final List<SavingsTransaction> transactions;
+  final bool loading;
+  final String? error;
+  final Future<void> Function() onRetry;
+  final ValueChanged<SavingsTransaction> onEdit;
+  final ValueChanged<SavingsTransaction> onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return _SurfaceCard(
+      title: 'Riwayat transaksi',
+      icon: Icons.receipt_long_outlined,
+      child: Builder(
+        builder: (context) {
+          if (loading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (error != null) {
+            return Column(
+              children: [
+                Text(error!),
+                const SizedBox(height: 8),
+                TextButton(onPressed: onRetry, child: const Text('Coba lagi')),
+              ],
+            );
+          }
+          if (transactions.isEmpty) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 12),
+              child: Center(child: Text('Belum ada transaksi.')),
+            );
+          }
+          return Column(
+            key: const Key('transaction-history'),
+            children: [
+              for (var index = 0; index < transactions.length; index++) ...[
+                _TransactionTile(
+                  transaction: transactions[index],
+                  onEdit: () => onEdit(transactions[index]),
+                  onDelete: () => onDelete(transactions[index]),
+                ),
+                if (index != transactions.length - 1) const Divider(height: 20),
+              ],
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _TransactionTile extends StatelessWidget {
+  const _TransactionTile({
+    required this.transaction,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  final SavingsTransaction transaction;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final deposit = transaction.type == SavingsTransactionType.deposit;
+    return Row(
+      key: Key('transaction-${transaction.id}'),
+      children: [
+        Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            color: AppColors.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(13),
+          ),
+          child: Icon(
+            deposit ? Icons.south_west_rounded : Icons.north_east_rounded,
+            color: AppColors.primary,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                deposit ? 'Setoran' : 'Penarikan',
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              Text(
+                [
+                  _formatDate(transaction.occurredAt),
+                  if (transaction.source != null) transaction.source!,
+                ].join(' • '),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: AppColors.ink.withValues(alpha: 0.55),
+                  fontSize: 12,
+                ),
+              ),
+              if (transaction.note != null)
+                Text(
+                  transaction.note!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12),
+                ),
+            ],
+          ),
+        ),
+        Text(
+          '${deposit ? '+' : '-'}${_rupiah(transaction.amount)}',
+          style: TextStyle(
+            fontWeight: FontWeight.w800,
+            color: deposit ? const Color(0xFF257A4B) : Colors.redAccent,
+          ),
+        ),
+        PopupMenuButton<String>(
+          key: Key('transaction-menu-${transaction.id}'),
+          onSelected: (value) {
+            if (value == 'edit') onEdit();
+            if (value == 'delete') onDelete();
+          },
+          itemBuilder: (context) => const [
+            PopupMenuItem(value: 'edit', child: Text('Ubah')),
+            PopupMenuItem(value: 'delete', child: Text('Hapus')),
+          ],
+        ),
+      ],
     );
   }
 }

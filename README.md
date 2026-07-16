@@ -59,11 +59,17 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 - Detail target dengan progres, informasi tenggat, frekuensi, dan prioritas.
 - Kalkulator rencana menabung yang menghitung sisa target, jumlah periode, serta
   rekomendasi setoran harian, mingguan, atau bulanan dengan pembulatan ke atas.
+- Setoran dan penarikan dengan pratinjau saldo serta validasi penarikan agar
+  tidak melebihi saldo target.
+- Riwayat transaksi per target, termasuk ubah, hapus, dan undo penghapusan.
+- Penyimpanan transaksi atomik: riwayat dan saldo target berubah dalam satu
+  transaksi database sehingga tidak dapat tersimpan separuh.
+- Pencegahan transaksi ganda menggunakan ID transaksi unik dan tombol simpan
+  yang dinonaktifkan selama operasi berlangsung.
 - Unit test dan widget test untuk alur utama.
 
 ### Belum selesai
 
-- Setoran, penarikan, dan riwayat transaksi.
 - Backup terenkripsi sebenarnya; layar saat ini baru menjelaskan rencana fiturnya.
 - Pengaturan keamanan, termasuk mengubah PIN dan menonaktifkan biometrik.
 - Lupa PIN dan pemulihan akses mode lokal.
@@ -97,10 +103,35 @@ dashboard menampilkan empty state dan shortcut langsung ke formulir target baru.
 4. Aplikasi memeriksa `PRAGMA cipher_version` sebelum memakai database.
 5. Jika kunci rusak atau database gagal dibuka, Pocketly menampilkan layar error
    dan tidak membuat database kosong secara otomatis.
-6. Skema versi 1 menyimpan target dalam integer satuan rupiah untuk menghindari
-   kesalahan floating point.
+6. Skema versi 2 menyimpan target dan transaksi dalam integer satuan rupiah
+   untuk menghindari kesalahan floating point.
 7. Operasi UI mengakses data melalui `GoalRepository`, sehingga lapisan database
    dapat dimigrasikan tanpa mengubah layar.
+
+## Transaksi tabungan
+
+### Prosedur penggunaan
+
+1. Buka menu **Tambah**, lalu pilih **Setoran** atau **Penarikan**. Transaksi
+   juga dapat ditambahkan langsung dari detail target.
+2. Pilih target, masukkan nominal, tanggal, sumber dana atau alasan, dan catatan
+   opsional.
+3. Periksa saldo setelah transaksi sebelum menyimpan.
+4. Setoran yang melewati nominal target memerlukan konfirmasi tambahan.
+5. Penarikan yang melebihi saldo ditolak tanpa mengubah riwayat maupun saldo.
+6. Buka detail target untuk melihat, mengubah, atau menghapus transaksi.
+7. Setelah transaksi dihapus, gunakan **Batalkan** pada snackbar untuk
+   memulihkannya.
+
+### Jaminan atomik
+
+- SQLCipher menyimpan baris transaksi dan memperbarui saldo target dalam satu
+  database transaction.
+- Jika salah satu operasi gagal, seluruh perubahan dibatalkan.
+- Edit membalik dampak transaksi lama sebelum menerapkan nilai baru.
+- Hapus membalik dampak transaksi terhadap saldo; foreign key menghapus riwayat
+  ketika target dihapus.
+- Nominal disimpan sebagai integer Rupiah, bukan floating point.
 
 Pemilihan saat ini adalah `sqflite_sqlcipher 3.4.0` karena Flutter proyek masih
 menyertakan Dart 3.9.2. Jalur Drift dengan SQLite3MultipleCiphers memerlukan versi
@@ -251,7 +282,7 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 22 test lulus.
+- Test: 35 test lulus.
 - Build Android debug: berhasil.
 - Build Android release dengan ProGuard SQLCipher: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
@@ -301,8 +332,8 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 ## Langkah berikutnya yang direkomendasikan
 
 1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
-2. Implementasikan setoran, penarikan, dan riwayat transaksi atomik.
-3. Tambahkan pengaturan keamanan untuk mengubah PIN dan menonaktifkan biometrik.
+2. Tambahkan pengaturan keamanan untuk mengubah PIN dan menonaktifkan biometrik.
+3. Implementasikan lupa PIN dan pemulihan akses mode lokal.
 
 Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:
 

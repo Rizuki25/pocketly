@@ -6,7 +6,7 @@ import 'database_encryption_key_repository.dart';
 class PocketlyDatabase {
   PocketlyDatabase._(this.database);
 
-  static const schemaVersion = 1;
+  static const schemaVersion = 2;
   static const fileName = 'pocketly_encrypted.db';
 
   final Database database;
@@ -22,6 +22,7 @@ class PocketlyDatabase {
       version: schemaVersion,
       onConfigure: (db) => db.execute('PRAGMA foreign_keys = ON'),
       onCreate: _createSchema,
+      onUpgrade: _upgradeSchema,
     );
 
     final cipher = await database.rawQuery('PRAGMA cipher_version');
@@ -55,6 +56,37 @@ class PocketlyDatabase {
     await db.execute(
       'CREATE INDEX goals_status_priority_idx '
       'ON goals (status, priority DESC, updated_at DESC)',
+    );
+    await _createTransactionsSchema(db);
+  }
+
+  static Future<void> _upgradeSchema(
+    Database db,
+    int oldVersion,
+    int newVersion,
+  ) async {
+    if (oldVersion < 2) await _createTransactionsSchema(db);
+  }
+
+  static Future<void> _createTransactionsSchema(Database db) async {
+    await db.execute('''
+      CREATE TABLE transactions (
+        id TEXT PRIMARY KEY NOT NULL,
+        goal_id TEXT NOT NULL,
+        type TEXT NOT NULL,
+        amount INTEGER NOT NULL CHECK (amount > 0),
+        occurred_at INTEGER NOT NULL,
+        source TEXT,
+        note TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        CHECK (type IN ('deposit', 'withdrawal')),
+        FOREIGN KEY (goal_id) REFERENCES goals (id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX transactions_goal_date_idx '
+      'ON transactions (goal_id, occurred_at DESC, created_at DESC)',
     );
   }
 

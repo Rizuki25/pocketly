@@ -6,6 +6,8 @@ import '../../goals/domain/savings_goal.dart';
 import '../../goals/presentation/goal_form_screen.dart';
 import '../../goals/presentation/goal_detail_screen.dart';
 import '../../goals/presentation/goals_page.dart';
+import '../../transactions/domain/savings_transaction.dart';
+import '../../transactions/presentation/transaction_form_screen.dart';
 import 'widgets/curved_notched_bottom_bar.dart';
 
 class MainShell extends StatefulWidget {
@@ -74,13 +76,42 @@ class _MainShellState extends State<MainShell> {
       MaterialPageRoute(
         builder: (detailContext) => GoalDetailScreen(
           goal: goal,
-          onEdit: () async {
-            await _openGoalForm(goal);
-            if (detailContext.mounted) Navigator.of(detailContext).pop();
-          },
+          repository: widget.goalRepository,
+          onEdit: _openGoalForm,
+          onChanged: _loadGoals,
         ),
       ),
     );
+  }
+
+  Future<void> _openTransactionForm(SavingsTransactionType type) async {
+    final activeGoals = _goals
+        .where((goal) => goal.status != SavingsGoalStatus.archived)
+        .toList();
+    if (activeGoals.isEmpty) {
+      _showMessage('Buat target aktif sebelum mencatat transaksi.');
+      return;
+    }
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => TransactionFormScreen(
+          goals: activeGoals,
+          type: type,
+          onSave: widget.goalRepository.recordTransaction,
+        ),
+      ),
+    );
+    if (saved == true) {
+      await _loadGoals();
+      if (mounted) {
+        setState(() => _selectedIndex = 1);
+        _showMessage(
+          type == SavingsTransactionType.deposit
+              ? 'Setoran tersimpan.'
+              : 'Penarikan tersimpan.',
+        );
+      }
+    }
   }
 
   Future<void> _toggleArchive(SavingsGoal goal) async {
@@ -150,7 +181,13 @@ class _MainShellState extends State<MainShell> {
         onArchive: _toggleArchive,
         onDelete: _deleteGoal,
       ),
-      _AddPage(key: const Key('add-page'), onCreateGoal: _openGoalForm),
+      _AddPage(
+        key: const Key('add-page'),
+        onCreateGoal: _openGoalForm,
+        onDeposit: () => _openTransactionForm(SavingsTransactionType.deposit),
+        onWithdrawal: () =>
+            _openTransactionForm(SavingsTransactionType.withdrawal),
+      ),
       const _PlaceholderPage(
         key: Key('reports-page'),
         title: 'Laporan',
@@ -447,15 +484,16 @@ class _InfoCard extends StatelessWidget {
 }
 
 class _AddPage extends StatelessWidget {
-  const _AddPage({required this.onCreateGoal, super.key});
+  const _AddPage({
+    required this.onCreateGoal,
+    required this.onDeposit,
+    required this.onWithdrawal,
+    super.key,
+  });
 
   final VoidCallback onCreateGoal;
-
-  void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature akan tersedia pada tahap berikutnya.')),
-    );
-  }
+  final VoidCallback onDeposit;
+  final VoidCallback onWithdrawal;
 
   @override
   Widget build(BuildContext context) {
@@ -481,17 +519,19 @@ class _AddPage extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _ActionCard(
+            key: const Key('add-deposit-action'),
             icon: Icons.south_west_rounded,
             title: 'Setoran',
             description: 'Catat uang yang kamu sisihkan.',
-            onTap: () => _showComingSoon(context, 'Setoran'),
+            onTap: onDeposit,
           ),
           const SizedBox(height: 14),
           _ActionCard(
+            key: const Key('add-withdrawal-action'),
             icon: Icons.north_east_rounded,
             title: 'Penarikan',
             description: 'Catat uang yang diambil dari target.',
-            onTap: () => _showComingSoon(context, 'Penarikan'),
+            onTap: onWithdrawal,
           ),
         ],
       ),

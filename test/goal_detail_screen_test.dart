@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pocketly/features/goals/domain/savings_goal.dart';
+import 'package:pocketly/features/goals/data/goal_repository.dart';
 import 'package:pocketly/features/goals/presentation/goal_detail_screen.dart';
 
 void main() {
@@ -21,13 +22,17 @@ void main() {
       deadline: DateTime(2026, 12, 16),
       category: 'Elektronik',
     );
+    final repository = MemoryGoalRepository();
+    await repository.create(goal);
 
     await tester.pumpWidget(
       MaterialApp(
         home: GoalDetailScreen(
           goal: goal,
+          repository: repository,
           now: DateTime(2026, 7, 16),
-          onEdit: () {},
+          onEdit: (_) async {},
+          onChanged: () async {},
         ),
       ),
     );
@@ -53,10 +58,17 @@ void main() {
       createdAt: createdAt,
       updatedAt: createdAt,
     );
+    final repository = MemoryGoalRepository();
+    await repository.create(goal);
 
     await tester.pumpWidget(
       MaterialApp(
-        home: GoalDetailScreen(goal: goal, onEdit: () => edited = true),
+        home: GoalDetailScreen(
+          goal: goal,
+          repository: repository,
+          onEdit: (_) async => edited = true,
+          onChanged: () async {},
+        ),
       ),
     );
     await tester.tap(find.byKey(const Key('goal-detail-edit')));
