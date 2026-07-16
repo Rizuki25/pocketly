@@ -80,11 +80,27 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
   validasi file, konfirmasi penggantian data, dan restore atomik.
 - Pemulihan lupa PIN melalui file backup dan kata sandi backup, lalu pembuatan
   PIN baru tanpa menyertakan credential lama di dalam file.
+- Notifikasi lokal untuk jadwal menabung sesuai frekuensi target dan pengingat
+  tiga hari sebelum tenggat.
+- Izin notifikasi baru diminta setelah penjelasan manfaat dan tidak menghambat
+  aplikasi ketika ditolak.
+- Privasi notifikasi tiga tingkat: lengkap, sembunyikan nominal sebagai default,
+  atau pesan generik tanpa nama target.
+- Waktu pengingat serta quiet hours dapat diatur; jadwal di dalam quiet hours
+  ditolak sebelum disimpan.
+- Tab Laporan dengan filter 7 hari, bulanan, tahunan, rentang khusus, target,
+  serta jenis transaksi.
+- Ringkasan total setoran, total penarikan, perubahan bersih, rata-rata setoran,
+  progres target, hari setoran paling konsisten, dan perbandingan periode lalu.
+- Ekspor seluruh transaksi hasil filter ke CSV setelah autentikasi ulang PIN dan
+  peringatan bahwa file tidak terenkripsi.
+- CSV memakai UTF-8 BOM, escaping field, dan netralisasi formula spreadsheet;
+  file sementara dihapus setelah share sheet selesai.
 - Unit test dan widget test untuk alur utama.
 
 ### Belum selesai
 
-- Notifikasi, laporan, ekspor, serta sinkronisasi.
+- Ekspor PDF serta sinkronisasi/cloud opsional.
 
 Setelah autentikasi berhasil, aplikasi membuka dashboard. Jika belum ada target,
 dashboard menampilkan empty state dan shortcut langsung ke formulir target baru.
@@ -286,6 +302,74 @@ backup tervalidasi dan dipulihkan, pengguna wajib membuat PIN baru. Ekspor
 menggunakan `share_plus 11.1.0`, pemilihan file menggunakan
 `file_selector 1.1.0`, dan file sementara menggunakan `path_provider 2.1.5`.
 
+## Notifikasi lokal dan privasi notifikasi
+
+### Mengaktifkan pengingat
+
+1. Buka **Profil → Kelola notifikasi**, atau tekan ikon lonceng di Beranda.
+2. Aktifkan **Pengingat tabungan**. Pocketly menjelaskan manfaatnya sebelum
+   meminta izin notifikasi dari Android/iOS.
+3. Pilih waktu pengingat dan quiet hours. Waktu pengingat tidak boleh berada di
+   dalam quiet hours.
+4. Pilih tingkat privasi lalu simpan pengaturan.
+
+Target harian dijadwalkan setiap hari, target mingguan dan fleksibel setiap
+Senin, serta target bulanan setiap tanggal 1. Target aktif yang memiliki tenggat
+juga mendapat satu pengingat tiga hari sebelumnya. Target yang selesai atau
+diarsipkan tidak dijadwalkan. Jadwal dibuat ulang setelah target atau transaksi
+berubah, dan maksimum 30 target dijadwalkan agar tetap di bawah batas 64
+notifikasi tertunda pada iOS.
+
+### Tingkat privasi
+
+- **Sembunyikan nominal** adalah default: nama target boleh tampil, tetapi
+  nominal tidak dimasukkan ke pesan.
+- **Pesan generik** tidak menyertakan nama target maupun nominal.
+- **Lengkap** dapat menampilkan nama target serta rekomendasi nominal setoran.
+
+Semua notifikasi Android memakai visibility `private`. Tampilan akhir pada layar
+kunci tetap mengikuti pengaturan sistem perangkat. Pocketly tidak mengirim nama
+target atau nominal ke server karena penjadwalan dilakukan sepenuhnya lokal.
+Pengaturan disimpan melalui secure storage dan dibersihkan saat seluruh data
+lokal direset.
+
+Implementasi memakai `flutter_local_notifications 20.1.0`, `flutter_timezone
+5.1.0`, dan `timezone 0.10.1`, yaitu versi yang kompatibel dengan Dart 3.9.2.
+Alarm Android memakai mode inexact sehingga tidak memerlukan izin exact alarm.
+Android dijadwalkan ulang setelah reboot dan aplikasi memakai zona waktu IANA
+perangkat agar perubahan zona waktu/DST ditangani dengan benar saat jadwal
+dibuat ulang.
+
+## Laporan dan ekspor CSV
+
+Tab **Laporan** menghitung ringkasan langsung dari riwayat transaksi lokal.
+Filter yang tersedia:
+
+- 7 hari terakhir, bulan berjalan, tahun berjalan, atau rentang tanggal khusus.
+- Semua target atau satu target.
+- Semua transaksi, setoran saja, atau penarikan saja.
+
+Laporan menampilkan total setoran, total penarikan, perubahan bersih, rata-rata
+setoran, progres target saat ini, hari dengan jumlah setoran terbanyak, dan
+perbandingan perubahan bersih terhadap rentang sebelumnya yang sama panjang.
+Insight hanya menyatakan hasil hitungan tersebut dan tidak memberi penilaian
+subjektif mengenai kesehatan keuangan pengguna.
+
+Tombol **CSV** mengekspor seluruh transaksi yang cocok dengan filter, meskipun
+layar hanya menampilkan 20 transaksi pertama agar tetap ringkas. Kolom CSV
+mencakup tanggal, target, jenis, nominal integer Rupiah, sumber/alasan, dan
+catatan. Sebelum ekspor, Pocketly:
+
+1. Menjelaskan bahwa CSV merupakan plaintext dan dapat dibaca aplikasi lain.
+2. Meminta autentikasi ulang menggunakan PIN aktif.
+3. Membuat file sementara dan membuka share sheet sistem.
+4. Menghapus file sementara setelah share sheet selesai.
+
+CSV diberi UTF-8 BOM agar teks Indonesia terbaca baik di aplikasi spreadsheet,
+semua field di-escape, dan nilai yang diawali `=`, `+`, `-`, atau `@`
+dinetralkan untuk mencegah formula injection. Ekspor PDF belum diimplementasikan;
+backup `.pocketly` tetap menjadi pilihan untuk pemindahan data yang terenkripsi.
+
 ## Privasi layar
 
 - Android selalu mengaktifkan `FLAG_SECURE` ketika aplikasi masuk background
@@ -316,6 +400,14 @@ lib/
       secure_key_value_store.dart
   features/
     backup/
+      data/
+      domain/
+      presentation/
+    notifications/
+      data/
+      domain/
+      presentation/
+    reports/
       data/
       domain/
       presentation/
@@ -359,7 +451,7 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 51 test lulus.
+- Test: 60 test lulus.
 - Build Android debug: berhasil.
 - Build Android release dengan ProGuard SQLCipher: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
@@ -406,11 +498,26 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 10. Uji perangkat tanpa biometrik terdaftar.
 11. Uji temporary/permanent biometric lockout bila perangkat memungkinkan.
 
+## Checklist pengujian notifikasi nyata
+
+1. Aktifkan pengingat dan pastikan dialog izin sistem baru muncul setelah layar
+   penjelasan.
+2. Tolak izin dan pastikan Pocketly tetap dapat dipakai tanpa pengingat.
+3. Aktifkan izin dari pengaturan sistem lalu simpan kembali pengaturan.
+4. Uji ketiga tingkat privasi pada layar kunci perangkat.
+5. Pastikan waktu di dalam quiet hours ditolak.
+6. Uji target harian, mingguan, bulanan, fleksibel, dan pengingat tenggat.
+7. Restart perangkat dan pastikan notifikasi masih terjadwal.
+8. Ubah zona waktu perangkat lalu buka Pocketly untuk membuat ulang jadwal.
+
 ## Langkah berikutnya yang direkomendasikan
 
 1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
-2. Implementasikan notifikasi lokal dan privasi notifikasi.
-3. Implementasikan laporan dan ekspor data sederhana.
+2. QA notifikasi, quiet hours, reboot, dan layar kunci pada perangkat nyata.
+3. QA share sheet untuk backup dan CSV pada Android/iOS nyata.
+4. Tambahkan pengujian migrasi database serta audit keamanan pra-rilis.
+5. Putuskan apakah sinkronisasi/cloud masuk fase berikutnya atau aplikasi tetap
+   sepenuhnya lokal.
 
 Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:
 

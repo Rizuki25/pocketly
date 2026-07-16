@@ -14,6 +14,8 @@ import '../features/dashboard/presentation/main_shell.dart';
 import '../features/backup/data/backup_file_gateway.dart';
 import '../features/backup/data/backup_service.dart';
 import '../features/goals/data/goal_repository.dart';
+import '../features/notifications/data/local_notification_scheduler.dart';
+import '../features/notifications/data/notification_settings_repository.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/security/presentation/local_data_intro_screen.dart';
 import '../features/security/presentation/biometric_offer_screen.dart';
@@ -44,6 +46,8 @@ class PocketlyApp extends StatefulWidget {
     this.goalRepository,
     this.secureStore,
     this.deleteLocalDatabase,
+    this.notificationScheduler,
+    this.notificationSettingsRepository,
     this.autoLockDuration = const Duration(minutes: 1),
     this.now,
     super.key,
@@ -56,6 +60,8 @@ class PocketlyApp extends StatefulWidget {
   final GoalRepository? goalRepository;
   final SecureKeyValueStore? secureStore;
   final Future<void> Function()? deleteLocalDatabase;
+  final NotificationScheduler? notificationScheduler;
+  final NotificationSettingsRepository? notificationSettingsRepository;
   final Duration autoLockDuration;
   final DateTime Function()? now;
 
@@ -70,6 +76,8 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
   late final BiometricAuthenticator _biometricAuthenticator;
   late final ScreenPrivacyController _screenPrivacyController;
   late final SecureKeyValueStore _secureStore;
+  late final NotificationScheduler _notificationScheduler;
+  late final NotificationSettingsRepository _notificationSettingsRepository;
   Future<GoalRepository>? _goalRepositoryFuture;
   bool _biometricEnabled = false;
   bool _sessionUnlocked = false;
@@ -82,6 +90,11 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     final secureStore = widget.secureStore ?? FlutterSecureKeyValueStore();
     _secureStore = secureStore;
+    _notificationScheduler =
+        widget.notificationScheduler ?? LocalNotificationScheduler();
+    _notificationSettingsRepository =
+        widget.notificationSettingsRepository ??
+        NotificationSettingsRepository(store: secureStore);
     _pinRepository =
         widget.pinRepository ?? PinAuthRepository(store: secureStore);
     _biometricPreferenceRepository =
@@ -236,6 +249,7 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
     await (widget.deleteLocalDatabase ?? PocketlyDatabase.deleteFile)();
     await DatabaseEncryptionKeyRepository(store: _secureStore).deleteKey();
     await _biometricPreferenceRepository.clear();
+    await _notificationSettingsRepository.clear();
     await _pinRepository.deleteCredential();
     if (!mounted) return;
     setState(() {
@@ -245,6 +259,15 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
       _stage = _AppStage.onboarding;
     });
     _applyScreenPrivacy(_AppStage.onboarding);
+    unawaited(_cancelNotificationsAfterReset());
+  }
+
+  Future<void> _cancelNotificationsAfterReset() async {
+    try {
+      await _notificationScheduler.cancelAll();
+    } on Object {
+      // Reset data lokal tidak boleh tertahan oleh layanan notifikasi platform.
+    }
   }
 
   Future<void> _finishBiometricSetup() async {
@@ -338,6 +361,8 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
             onSecurityChanged: _finishSecurityChange,
             onSensitiveScreenChanged: _setRouteSensitive,
             goalRepository: repository,
+            notificationScheduler: _notificationScheduler,
+            notificationSettingsRepository: _notificationSettingsRepository,
           );
         },
       ),

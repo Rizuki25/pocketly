@@ -10,6 +10,11 @@ import '../../goals/domain/savings_goal.dart';
 import '../../goals/presentation/goal_form_screen.dart';
 import '../../goals/presentation/goal_detail_screen.dart';
 import '../../goals/presentation/goals_page.dart';
+import '../../notifications/data/local_notification_scheduler.dart';
+import '../../notifications/data/notification_settings_repository.dart';
+import '../../notifications/presentation/notification_settings_screen.dart';
+import '../../reports/data/report_export_gateway.dart';
+import '../../reports/presentation/reports_screen.dart';
 import '../../transactions/domain/savings_transaction.dart';
 import '../../transactions/presentation/transaction_form_screen.dart';
 import '../../security/presentation/change_pin_screen.dart';
@@ -24,6 +29,8 @@ class MainShell extends StatefulWidget {
     required this.onSecurityChanged,
     required this.onSensitiveScreenChanged,
     required this.goalRepository,
+    required this.notificationScheduler,
+    required this.notificationSettingsRepository,
     super.key,
   });
 
@@ -33,6 +40,8 @@ class MainShell extends StatefulWidget {
   final Future<void> Function() onSecurityChanged;
   final ValueChanged<bool> onSensitiveScreenChanged;
   final GoalRepository goalRepository;
+  final NotificationScheduler notificationScheduler;
+  final NotificationSettingsRepository notificationSettingsRepository;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -42,6 +51,7 @@ class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
   List<SavingsGoal> _goals = const [];
   bool _loadingGoals = true;
+  int _dataRevision = 0;
 
   void _selectTab(int index) => setState(() => _selectedIndex = index);
 
@@ -58,11 +68,24 @@ class _MainShellState extends State<MainShell> {
       setState(() {
         _goals = goals;
         _loadingGoals = false;
+        _dataRevision++;
       });
+      await _syncNotifications(goals);
     } on Object {
       if (!mounted) return;
       setState(() => _loadingGoals = false);
       _showMessage('Data target belum dapat dibuka.');
+    }
+  }
+
+  Future<void> _syncNotifications(List<SavingsGoal> goals) async {
+    try {
+      final settings = await widget.notificationSettingsRepository.read();
+      if (settings.enabled) {
+        await widget.notificationScheduler.reschedule(goals, settings);
+      }
+    } on Object {
+      // Pengaturan dapat diperbaiki dari layar notifikasi tanpa menghambat data.
     }
   }
 
@@ -248,6 +271,37 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  Future<void> _openNotificationSettings() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (context) => NotificationSettingsScreen(
+          repository: widget.notificationSettingsRepository,
+          scheduler: widget.notificationScheduler,
+          goals: _goals,
+        ),
+      ),
+    );
+  }
+
+  Future<bool> _reauthenticateForReportExport() async {
+    widget.onSensitiveScreenChanged(true);
+    try {
+      final verified = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (context) => PinReauthenticationScreen(
+            pinRepository: widget.pinRepository,
+            title: 'Ekspor laporan CSV',
+            description:
+                'Masukkan PIN sebelum membuat file transaksi tanpa enkripsi.',
+          ),
+        ),
+      );
+      return verified == true;
+    } finally {
+      widget.onSensitiveScreenChanged(false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
@@ -255,6 +309,7 @@ class _MainShellState extends State<MainShell> {
         goals: _goals,
         loading: _loadingGoals,
         onCreateGoal: _openGoalForm,
+        onNotifications: _openNotificationSettings,
       ),
       GoalsPage(
         goals: _goals,
@@ -273,11 +328,12 @@ class _MainShellState extends State<MainShell> {
         onWithdrawal: () =>
             _openTransactionForm(SavingsTransactionType.withdrawal),
       ),
-      const _PlaceholderPage(
-        key: Key('reports-page'),
-        title: 'Laporan',
-        description: 'Ringkasan dan perkembangan tabungan akan tampil di sini.',
-        icon: Icons.bar_chart_rounded,
+      ReportsScreen(
+        key: ValueKey('reports-$_dataRevision'),
+        repository: widget.goalRepository,
+        goals: _goals,
+        exportGateway: const SystemReportExportGateway(),
+        reauthenticateForExport: _reauthenticateForReportExport,
       ),
       _ProfilePage(
         biometricEnabled: widget.biometricEnabled,
@@ -285,6 +341,7 @@ class _MainShellState extends State<MainShell> {
         onChangePin: _openChangePin,
         onDisableBiometric: _disableBiometric,
         onBackup: _openBackup,
+        onNotifications: _openNotificationSettings,
       ),
     ];
 
@@ -304,11 +361,13 @@ class _Dashboard extends StatelessWidget {
     required this.goals,
     required this.loading,
     required this.onCreateGoal,
+    required this.onNotifications,
   });
 
   final List<SavingsGoal> goals;
   final bool loading;
   final VoidCallback onCreateGoal;
+  final VoidCallback onNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -338,10 +397,11 @@ class _Dashboard extends StatelessWidget {
                 ),
               ),
               const Spacer(),
-              const IconButton(
+              IconButton(
+                key: const Key('dashboard-notification-settings'),
                 tooltip: 'Notifikasi',
-                onPressed: null,
-                icon: Icon(Icons.notifications_none_rounded),
+                onPressed: onNotifications,
+                icon: const Icon(Icons.notifications_none_rounded),
               ),
             ],
           ),
@@ -697,56 +757,6 @@ class _ActionCard extends StatelessWidget {
   }
 }
 
-class _PlaceholderPage extends StatelessWidget {
-  const _PlaceholderPage({
-    required this.title,
-    required this.description,
-    required this.icon,
-    super.key,
-  });
-
-  final String title;
-  final String description;
-  final IconData icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.headlineLarge),
-            const Spacer(),
-            Center(
-              child: Column(
-                children: [
-                  Icon(icon, size: 58, color: AppColors.primary),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Belum ada data',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    description,
-                    textAlign: TextAlign.center,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: AppColors.ink.withValues(alpha: 0.6),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const Spacer(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
 class _ProfilePage extends StatelessWidget {
   const _ProfilePage({
     required this.biometricEnabled,
@@ -754,6 +764,7 @@ class _ProfilePage extends StatelessWidget {
     required this.onChangePin,
     required this.onDisableBiometric,
     required this.onBackup,
+    required this.onNotifications,
   });
 
   final bool biometricEnabled;
@@ -761,6 +772,7 @@ class _ProfilePage extends StatelessWidget {
   final VoidCallback onChangePin;
   final VoidCallback onDisableBiometric;
   final VoidCallback onBackup;
+  final VoidCallback onNotifications;
 
   @override
   Widget build(BuildContext context) {
@@ -803,6 +815,20 @@ class _ProfilePage extends StatelessWidget {
               label: const Text('Aktifkan biometrik'),
             ),
           ],
+          const SizedBox(height: 24),
+          const _InfoCard(
+            icon: Icons.notifications_active_outlined,
+            title: 'Notifikasi privat',
+            description:
+                'Atur jadwal, quiet hours, dan isi pesan pada layar kunci.',
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            key: const Key('notification-settings-action'),
+            onPressed: onNotifications,
+            icon: const Icon(Icons.notifications_none_rounded),
+            label: const Text('Kelola notifikasi'),
+          ),
           const SizedBox(height: 24),
           _InfoCard(
             icon: Icons.enhanced_encryption_outlined,

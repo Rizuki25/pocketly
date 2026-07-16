@@ -62,11 +62,11 @@ void main() {
       await tester.tap(find.byKey(const Key('backup-password-submit')));
       await tester.pumpAndSettle();
 
-    expect(gateway.exportedBytes, isNotNull);
-    expect(gateway.exportedFileName, endsWith('.pocketly'));
-    await tester.drag(find.byType(ListView), const Offset(0, -300));
-    await tester.pumpAndSettle();
-    expect(find.text('Backup terenkripsi siap disimpan.'), findsOneWidget);
+      expect(gateway.exportedBytes, isNotNull);
+      expect(gateway.exportedFileName, endsWith('.pocketly'));
+      await tester.drag(find.byType(ListView), const Offset(0, -300));
+      await tester.pumpAndSettle();
+      expect(find.text('Backup terenkripsi siap disimpan.'), findsOneWidget);
       final decoded = await codec.decrypt(
         gateway.exportedBytes!,
         'rahasia-backup-ku',
