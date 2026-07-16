@@ -48,20 +48,57 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 - iOS menampilkan privacy shield saat layar sensitif sedang direkam atau
   dicerminkan.
 - Dashboard empty state dan struktur navigasi utama lima bagian.
+- Database lokal SQLCipher terenkripsi dengan kunci acak 256-bit di
+  Keystore/Keychain.
+- CRUD target tabungan: buat, lihat, ubah, arsipkan/pulihkan, dan hapus.
+- Formulir target dengan validasi nominal, saldo awal, frekuensi, kategori,
+  prioritas, dan tenggat.
 - Unit test dan widget test untuk alur utama.
 
 ### Belum selesai
 
-- CRUD target tabungan.
 - Setoran, penarikan, dan riwayat transaksi.
-- Database lokal terenkripsi untuk data tabungan.
 - Backup terenkripsi sebenarnya; layar saat ini baru menjelaskan rencana fiturnya.
 - Pengaturan keamanan, termasuk mengubah PIN dan menonaktifkan biometrik.
 - Lupa PIN dan pemulihan akses mode lokal.
 - Notifikasi, laporan, ekspor, serta sinkronisasi.
 
 Setelah autentikasi berhasil, aplikasi membuka dashboard. Jika belum ada target,
-dashboard menampilkan empty state dan shortcut untuk menuju menu **Tambah**.
+dashboard menampilkan empty state dan shortcut langsung ke formulir target baru.
+
+## Target tabungan
+
+### Prosedur penggunaan
+
+1. Masuk ke Pocketly menggunakan PIN atau biometrik.
+2. Dari Beranda, tekan **Buat target pertama**, atau buka menu **Tambah** lalu
+   pilih **Target baru**.
+3. Isi nama dan nominal target.
+4. Isi saldo awal bila sudah memiliki tabungan. Saldo awal tidak boleh melebihi
+   nominal target.
+5. Pilih frekuensi menabung: harian, mingguan, bulanan, atau fleksibel.
+6. Tambahkan kategori, tenggat, dan status prioritas bila diperlukan.
+7. Tekan **Simpan target**. Target muncul di menu **Target** dan ringkasannya
+   tampil di Beranda.
+8. Gunakan menu tiga titik pada kartu target untuk mengubah, mengarsipkan,
+   memulihkan, atau menghapus target.
+
+### Prosedur teknis
+
+1. Saat data target pertama kali dibuka, Pocketly membuat kunci acak 32 byte.
+2. Kunci disimpan melalui `flutter_secure_storage`, bukan di database atau log.
+3. `sqflite_sqlcipher` membuka `pocketly_encrypted.db` menggunakan kunci tersebut.
+4. Aplikasi memeriksa `PRAGMA cipher_version` sebelum memakai database.
+5. Jika kunci rusak atau database gagal dibuka, Pocketly menampilkan layar error
+   dan tidak membuat database kosong secara otomatis.
+6. Skema versi 1 menyimpan target dalam integer satuan rupiah untuk menghindari
+   kesalahan floating point.
+7. Operasi UI mengakses data melalui `GoalRepository`, sehingga lapisan database
+   dapat dimigrasikan tanpa mengubah layar.
+
+Pemilihan saat ini adalah `sqflite_sqlcipher 3.4.0` karena Flutter proyek masih
+menyertakan Dart 3.9.2. Jalur Drift dengan SQLite3MultipleCiphers memerlukan versi
+SDK yang lebih baru; migrasi dapat dipertimbangkan ketika Flutter SDK dinaikkan.
 
 ## Alur aplikasi saat ini
 
@@ -208,9 +245,11 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 17 test lulus.
+- Test: 21 test lulus.
 - Build Android debug: berhasil.
+- Build Android release dengan ProGuard SQLCipher: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
+- APK release: `build/app/outputs/flutter-apk/app-release.apk`.
 - Build iOS belum diverifikasi karena lingkungan pengembangan saat ini menggunakan Windows.
 
 ## Catatan build Windows lintas drive
@@ -256,7 +295,8 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 ## Langkah berikutnya yang direkomendasikan
 
 1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
-2. Tentukan database lokal terenkripsi dan mulai CRUD target tabungan.
+2. Buat detail target dan kalkulator rencana menabung.
+3. Implementasikan setoran, penarikan, dan riwayat transaksi atomik.
 
 Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:
 

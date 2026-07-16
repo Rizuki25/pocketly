@@ -8,7 +8,10 @@ import '../core/security/local_auth_biometric_authenticator.dart';
 import '../core/security/pin_auth_repository.dart';
 import '../core/security/secure_key_value_store.dart';
 import '../core/security/screen_privacy_controller.dart';
+import '../core/database/database_encryption_key_repository.dart';
+import '../core/database/pocketly_database.dart';
 import '../features/dashboard/presentation/main_shell.dart';
+import '../features/goals/data/goal_repository.dart';
 import '../features/onboarding/presentation/onboarding_screen.dart';
 import '../features/security/presentation/local_data_intro_screen.dart';
 import '../features/security/presentation/biometric_offer_screen.dart';
@@ -34,6 +37,7 @@ class PocketlyApp extends StatefulWidget {
     this.biometricPreferenceRepository,
     this.biometricAuthenticator,
     this.screenPrivacyController,
+    this.goalRepository,
     this.autoLockDuration = const Duration(minutes: 1),
     this.now,
     super.key,
@@ -43,6 +47,7 @@ class PocketlyApp extends StatefulWidget {
   final BiometricPreferenceRepository? biometricPreferenceRepository;
   final BiometricAuthenticator? biometricAuthenticator;
   final ScreenPrivacyController? screenPrivacyController;
+  final GoalRepository? goalRepository;
   final Duration autoLockDuration;
   final DateTime Function()? now;
 
@@ -56,6 +61,8 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
   late final BiometricPreferenceRepository _biometricPreferenceRepository;
   late final BiometricAuthenticator _biometricAuthenticator;
   late final ScreenPrivacyController _screenPrivacyController;
+  late final SecureKeyValueStore _secureStore;
+  Future<GoalRepository>? _goalRepositoryFuture;
   bool _biometricEnabled = false;
   bool _sessionUnlocked = false;
   DateTime? _backgroundedAt;
@@ -65,6 +72,7 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     final secureStore = FlutterSecureKeyValueStore();
+    _secureStore = secureStore;
     _pinRepository =
         widget.pinRepository ?? PinAuthRepository(store: secureStore);
     _biometricPreferenceRepository =
@@ -122,7 +130,32 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    final repository = _goalRepositoryFuture;
+    if (repository != null) {
+      unawaited(_closeGoalRepository(repository));
+    }
     super.dispose();
+  }
+
+  Future<void> _closeGoalRepository(Future<GoalRepository> repository) async {
+    try {
+      await (await repository).close();
+    } on Object {
+      // Kegagalan membuka database sudah ditangani oleh layar error.
+    }
+  }
+
+  Future<GoalRepository> _getGoalRepository() {
+    return _goalRepositoryFuture ??= _createGoalRepository();
+  }
+
+  Future<GoalRepository> _createGoalRepository() async {
+    final injected = widget.goalRepository;
+    if (injected != null) return injected;
+    final database = await PocketlyDatabase.open(
+      keyRepository: DatabaseEncryptionKeyRepository(store: _secureStore),
+    );
+    return SqlCipherGoalRepository(database);
   }
 
   Future<void> _restoreSecurityState() async {
@@ -214,10 +247,21 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
         biometricEnabled: _biometricEnabled,
         onUnlocked: _unlock,
       ),
-      _AppStage.unlocked => MainShell(
+      _AppStage.unlocked => FutureBuilder<GoalRepository>(
         key: const ValueKey('main-shell-stage'),
-        biometricEnabled: _biometricEnabled,
-        onConfigureBiometric: () => _setStage(_AppStage.biometricOffer),
+        future: _getGoalRepository(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const _DatabaseErrorView();
+          }
+          final repository = snapshot.data;
+          if (repository == null) return const _DatabaseLoadingView();
+          return MainShell(
+            biometricEnabled: _biometricEnabled,
+            onConfigureBiometric: () => _setStage(_AppStage.biometricOffer),
+            goalRepository: repository,
+          );
+        },
       ),
       _AppStage.storageError => const _SecurityStorageErrorView(
         key: ValueKey('storage-error'),
@@ -264,6 +308,51 @@ class _SecurityStorageErrorView extends StatelessWidget {
               const SizedBox(height: 10),
               const Text(
                 'Pocketly tidak membuat credential baru secara otomatis agar data lama tetap aman.',
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DatabaseLoadingView extends StatelessWidget {
+  const _DatabaseLoadingView();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Scaffold(
+      key: Key('database-loading-screen'),
+      body: Center(child: CircularProgressIndicator()),
+    );
+  }
+}
+
+class _DatabaseErrorView extends StatelessWidget {
+  const _DatabaseErrorView();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      key: const Key('database-error-screen'),
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.storage_rounded, size: 54),
+              const SizedBox(height: 20),
+              Text(
+                'Data tabungan tidak dapat dibuka',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineLarge,
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Pocketly tidak membuat database kosong secara otomatis agar data lama tetap aman.',
                 textAlign: TextAlign.center,
               ),
             ],

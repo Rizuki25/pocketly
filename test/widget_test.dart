@@ -9,6 +9,7 @@ import 'package:pocketly/core/security/pin_hasher.dart';
 import 'package:pocketly/core/security/secure_key_value_store.dart';
 import 'package:pocketly/core/security/screen_privacy_controller.dart';
 import 'package:pocketly/features/security/presentation/biometric_offer_screen.dart';
+import 'package:pocketly/features/goals/data/goal_repository.dart';
 
 void main() {
   testWidgets('splash opens the first onboarding page', (tester) async {
@@ -197,9 +198,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byKey(const Key('dashboard-page')), findsOneWidget);
-    await tester.tap(find.byKey(const Key('dashboard-create-goal')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const Key('add-page')), findsOneWidget);
 
     await tester.tap(find.byKey(const Key('nav-target')));
     await tester.pumpAndSettle();
@@ -216,6 +214,55 @@ void main() {
     await tester.tap(find.byKey(const Key('nav-profile')));
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('profile-page')), findsOneWidget);
+  });
+
+  testWidgets('creates the first savings goal from dashboard', (tester) async {
+    final store = MemorySecureKeyValueStore();
+    final repository = _testRepository(store);
+    final goalRepository = MemoryGoalRepository();
+    await repository.createPin('135790');
+
+    await tester.pumpWidget(
+      _testApp(
+        store: store,
+        pinRepository: repository,
+        goalRepository: goalRepository,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await _enterPin(tester, '135790');
+    await tester.tap(find.byKey(const Key('pin-unlock')));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('dashboard-create-goal')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('goal-form-screen')), findsOneWidget);
+
+    await tester.enterText(
+      find.byKey(const Key('goal-name-field')),
+      'Dana darurat',
+    );
+    await tester.enterText(
+      find.byKey(const Key('goal-target-field')),
+      '12000000',
+    );
+    await tester.enterText(
+      find.byKey(const Key('goal-balance-field')),
+      '1000000',
+    );
+    tester.testTextInput.hide();
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byType(ListView).last,
+      const Offset(0, -650),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('goal-save-button')));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('goals-page')), findsOneWidget);
+    expect(find.text('Dana darurat'), findsOneWidget);
+    expect((await goalRepository.getAll()).single.targetAmount, 12000000);
   });
 
   testWidgets('cancelled biometric stays on lock screen without a loop', (
@@ -307,6 +354,7 @@ PocketlyApp _testApp({
   BiometricPreferenceRepository? biometricPreferenceRepository,
   BiometricAuthenticator? biometricAuthenticator,
   ScreenPrivacyController? screenPrivacyController,
+  GoalRepository? goalRepository,
   DateTime Function()? now,
 }) {
   final actualStore = store ?? MemorySecureKeyValueStore();
@@ -320,6 +368,7 @@ PocketlyApp _testApp({
         _FakeBiometricAuthenticator(authResults: [BiometricAuthStatus.success]),
     screenPrivacyController:
         screenPrivacyController ?? _FakeScreenPrivacyController(),
+    goalRepository: goalRepository ?? MemoryGoalRepository(),
     now: now,
   );
 }

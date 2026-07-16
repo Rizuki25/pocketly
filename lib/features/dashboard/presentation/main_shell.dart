@@ -1,16 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../../../app/theme/app_colors.dart';
+import '../../goals/data/goal_repository.dart';
+import '../../goals/domain/savings_goal.dart';
+import '../../goals/presentation/goal_form_screen.dart';
+import '../../goals/presentation/goals_page.dart';
+import 'widgets/curved_notched_bottom_bar.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({
     required this.biometricEnabled,
     required this.onConfigureBiometric,
+    required this.goalRepository,
     super.key,
   });
 
   final bool biometricEnabled;
   final VoidCallback onConfigureBiometric;
+  final GoalRepository goalRepository;
 
   @override
   State<MainShell> createState() => _MainShellState();
@@ -18,20 +25,116 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> {
   int _selectedIndex = 0;
+  List<SavingsGoal> _goals = const [];
+  bool _loadingGoals = true;
 
   void _selectTab(int index) => setState(() => _selectedIndex = index);
 
   @override
+  void initState() {
+    super.initState();
+    _loadGoals();
+  }
+
+  Future<void> _loadGoals() async {
+    try {
+      final goals = await widget.goalRepository.getAll();
+      if (!mounted) return;
+      setState(() {
+        _goals = goals;
+        _loadingGoals = false;
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() => _loadingGoals = false);
+      _showMessage('Data target belum dapat dibuka.');
+    }
+  }
+
+  Future<void> _openGoalForm([SavingsGoal? goal]) async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (context) => GoalFormScreen(
+          initialGoal: goal,
+          onSave: (value) => goal == null
+              ? widget.goalRepository.create(value)
+              : widget.goalRepository.update(value),
+        ),
+      ),
+    );
+    if (saved == true) {
+      await _loadGoals();
+      if (mounted) setState(() => _selectedIndex = 1);
+    }
+  }
+
+  Future<void> _toggleArchive(SavingsGoal goal) async {
+    final archived = goal.status != SavingsGoalStatus.archived;
+    try {
+      await widget.goalRepository.setArchived(goal.id, archived: archived);
+      await _loadGoals();
+      _showMessage(archived ? 'Target diarsipkan.' : 'Target dipulihkan.');
+    } on Object {
+      _showMessage('Status target belum dapat diubah.');
+    }
+  }
+
+  Future<void> _deleteGoal(SavingsGoal goal) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hapus target?'),
+        content: Text(
+          'Target “${goal.name}” akan dihapus. Riwayat transaksi nantinya juga akan terdampak.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            key: const Key('confirm-delete-goal'),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hapus'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await widget.goalRepository.delete(goal.id);
+      await _loadGoals();
+      _showMessage('Target dihapus.');
+    } on Object {
+      _showMessage('Target belum dapat dihapus.');
+    }
+  }
+
+  void _showMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  @override
   Widget build(BuildContext context) {
     final pages = [
-      _EmptyDashboard(onCreateGoal: () => _selectTab(2)),
-      const _PlaceholderPage(
-        key: Key('goals-page'),
-        title: 'Target',
-        description: 'Target aktif, selesai, dan arsip akan tersusun di sini.',
-        icon: Icons.flag_rounded,
+      _Dashboard(
+        goals: _goals,
+        loading: _loadingGoals,
+        onCreateGoal: _openGoalForm,
       ),
-      const _AddPage(key: Key('add-page')),
+      GoalsPage(
+        goals: _goals,
+        loading: _loadingGoals,
+        onRefresh: _loadGoals,
+        onCreate: _openGoalForm,
+        onEdit: _openGoalForm,
+        onArchive: _toggleArchive,
+        onDelete: _deleteGoal,
+      ),
+      _AddPage(key: const Key('add-page'), onCreateGoal: _openGoalForm),
       const _PlaceholderPage(
         key: Key('reports-page'),
         title: 'Laporan',
@@ -47,218 +150,30 @@ class _MainShellState extends State<MainShell> {
     return Scaffold(
       key: const Key('main-shell'),
       body: IndexedStack(index: _selectedIndex, children: pages),
-      bottomNavigationBar: _PocketlyNavigationBar(
-        selectedIndex: _selectedIndex,
-        onSelected: _selectTab,
+      bottomNavigationBar: CurvedNotchedBottomBar(
+        currentIndex: _selectedIndex,
+        onTap: _selectTab,
       ),
     );
   }
 }
 
-class _PocketlyNavigationBar extends StatelessWidget {
-  const _PocketlyNavigationBar({
-    required this.selectedIndex,
-    required this.onSelected,
+class _Dashboard extends StatelessWidget {
+  const _Dashboard({
+    required this.goals,
+    required this.loading,
+    required this.onCreateGoal,
   });
 
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    final bottomInset = MediaQuery.paddingOf(context).bottom;
-    return SizedBox(
-      key: const Key('main-navigation'),
-      height: 94 + bottomInset,
-      child: Stack(
-        clipBehavior: Clip.none,
-        alignment: Alignment.topCenter,
-        children: [
-          Positioned(
-            left: 18,
-            right: 18,
-            top: 20,
-            bottom: 8 + bottomInset,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppColors.ink.withValues(alpha: 0.09),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _NavigationItem(
-                      key: const Key('nav-home'),
-                      label: 'Beranda',
-                      icon: Icons.home_outlined,
-                      selectedIcon: Icons.home_rounded,
-                      selected: selectedIndex == 0,
-                      onTap: () => onSelected(0),
-                    ),
-                  ),
-                  Expanded(
-                    child: _NavigationItem(
-                      key: const Key('nav-target'),
-                      label: 'Target',
-                      icon: Icons.flag_outlined,
-                      selectedIcon: Icons.flag_rounded,
-                      selected: selectedIndex == 1,
-                      onTap: () => onSelected(1),
-                    ),
-                  ),
-                  const Spacer(),
-                  Expanded(
-                    child: _NavigationItem(
-                      key: const Key('nav-reports'),
-                      label: 'Laporan',
-                      icon: Icons.bar_chart_outlined,
-                      selectedIcon: Icons.bar_chart_rounded,
-                      selected: selectedIndex == 3,
-                      onTap: () => onSelected(3),
-                    ),
-                  ),
-                  Expanded(
-                    child: _NavigationItem(
-                      key: const Key('nav-profile'),
-                      label: 'Profil',
-                      icon: Icons.person_outline_rounded,
-                      selectedIcon: Icons.person_rounded,
-                      selected: selectedIndex == 4,
-                      onTap: () => onSelected(4),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          Positioned(
-            top: 0,
-            child: Semantics(
-              button: true,
-              selected: selectedIndex == 2,
-              label: 'Tambah',
-              child: Tooltip(
-                message: 'Tambah',
-                child: InkResponse(
-                  key: const Key('nav-add'),
-                  onTap: () => onSelected(2),
-                  radius: 38,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: AppColors.primary,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.background, width: 5),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.ink.withValues(alpha: 0.16),
-                          blurRadius: 0,
-                          spreadRadius: 5,
-                          offset: const Offset(0, 5),
-                        ),
-                      ],
-                    ),
-                    child: const Icon(
-                      Icons.add_rounded,
-                      size: 34,
-                      color: AppColors.background,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          if (selectedIndex == 2)
-            const Positioned(top: 76, child: _SelectedDot()),
-        ],
-      ),
-    );
-  }
-}
-
-class _NavigationItem extends StatelessWidget {
-  const _NavigationItem({
-    required this.label,
-    required this.icon,
-    required this.selectedIcon,
-    required this.selected,
-    required this.onTap,
-    super.key,
-  });
-
-  final String label;
-  final IconData icon;
-  final IconData selectedIcon;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      selected: selected,
-      label: label,
-      child: Tooltip(
-        message: label,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(24),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              AnimatedSwitcher(
-                duration: const Duration(milliseconds: 160),
-                child: Icon(
-                  selected ? selectedIcon : icon,
-                  key: ValueKey(selected),
-                  color: selected
-                      ? AppColors.primary
-                      : AppColors.ink.withValues(alpha: 0.28),
-                  size: 27,
-                ),
-              ),
-              const SizedBox(height: 5),
-              if (selected) const _SelectedDot() else const SizedBox(height: 7),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SelectedDot extends StatelessWidget {
-  const _SelectedDot();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 7,
-      height: 7,
-      decoration: const BoxDecoration(
-        color: AppColors.primary,
-        shape: BoxShape.circle,
-      ),
-    );
-  }
-}
-
-class _EmptyDashboard extends StatelessWidget {
-  const _EmptyDashboard({required this.onCreateGoal});
-
+  final List<SavingsGoal> goals;
+  final bool loading;
   final VoidCallback onCreateGoal;
 
   @override
   Widget build(BuildContext context) {
+    final active = goals
+        .where((goal) => goal.status != SavingsGoalStatus.archived)
+        .toList();
     return SafeArea(
       key: const Key('dashboard-page'),
       child: ListView(
@@ -304,55 +219,12 @@ class _EmptyDashboard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 30),
-          Container(
-            padding: const EdgeInsets.fromLTRB(22, 30, 22, 24),
-            decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.09),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.18),
-              ),
-            ),
-            child: Column(
-              children: [
-                Container(
-                  width: 92,
-                  height: 92,
-                  decoration: const BoxDecoration(
-                    color: AppColors.background,
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(
-                    Icons.savings_outlined,
-                    size: 46,
-                    color: AppColors.primary,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Belum ada target tabungan',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  'Buat target pertamamu untuk mulai mencatat dan melihat perkembangan tabungan.',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    color: AppColors.ink.withValues(alpha: 0.62),
-                    fontSize: 14,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                FilledButton.icon(
-                  key: const Key('dashboard-create-goal'),
-                  onPressed: onCreateGoal,
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Buat target pertama'),
-                ),
-              ],
-            ),
-          ),
+          if (loading)
+            const Center(child: CircularProgressIndicator())
+          else if (active.isEmpty)
+            _EmptyDashboardCard(onCreateGoal: onCreateGoal)
+          else
+            _DashboardSummary(goals: active, onCreateGoal: onCreateGoal),
           const SizedBox(height: 24),
           const _InfoCard(
             icon: Icons.lock_outline_rounded,
@@ -364,6 +236,125 @@ class _EmptyDashboard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _EmptyDashboardCard extends StatelessWidget {
+  const _EmptyDashboardCard({required this.onCreateGoal});
+
+  final VoidCallback onCreateGoal;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(22, 30, 22, 24),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.primary.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        children: [
+          Container(
+            width: 92,
+            height: 92,
+            decoration: const BoxDecoration(
+              color: AppColors.background,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.savings_outlined,
+              size: 46,
+              color: AppColors.primary,
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            'Belum ada target tabungan',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Buat target pertamamu untuk mulai mencatat dan melihat perkembangan tabungan.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+              color: AppColors.ink.withValues(alpha: 0.62),
+              fontSize: 14,
+            ),
+          ),
+          const SizedBox(height: 24),
+          FilledButton.icon(
+            key: const Key('dashboard-create-goal'),
+            onPressed: onCreateGoal,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Buat target pertama'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardSummary extends StatelessWidget {
+  const _DashboardSummary({required this.goals, required this.onCreateGoal});
+
+  final List<SavingsGoal> goals;
+  final VoidCallback onCreateGoal;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = goals.fold<int>(0, (sum, goal) => sum + goal.currentBalance);
+    final priority = goals.firstWhere(
+      (goal) => goal.priority > 0,
+      orElse: () => goals.first,
+    );
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        color: AppColors.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(28),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Total tabungan'),
+          const SizedBox(height: 5),
+          Text(
+            _rupiah(total),
+            style: Theme.of(
+              context,
+            ).textTheme.headlineLarge?.copyWith(fontSize: 30),
+          ),
+          const SizedBox(height: 22),
+          Text(priority.name, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 10),
+          LinearProgressIndicator(
+            value: priority.progress,
+            minHeight: 9,
+            borderRadius: BorderRadius.circular(20),
+            backgroundColor: AppColors.background,
+            color: AppColors.primary,
+          ),
+          const SizedBox(height: 18),
+          OutlinedButton.icon(
+            onPressed: onCreateGoal,
+            icon: const Icon(Icons.add_rounded),
+            label: const Text('Target baru'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _rupiah(int amount) {
+  final source = amount.toString();
+  final buffer = StringBuffer();
+  for (var index = 0; index < source.length; index++) {
+    if (index > 0 && (source.length - index) % 3 == 0) buffer.write('.');
+    buffer.write(source[index]);
+  }
+  return 'Rp${buffer.toString()}';
 }
 
 class _InfoCard extends StatelessWidget {
@@ -417,7 +408,9 @@ class _InfoCard extends StatelessWidget {
 }
 
 class _AddPage extends StatelessWidget {
-  const _AddPage({super.key});
+  const _AddPage({required this.onCreateGoal, super.key});
+
+  final VoidCallback onCreateGoal;
 
   void _showComingSoon(BuildContext context, String feature) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -445,7 +438,7 @@ class _AddPage extends StatelessWidget {
             icon: Icons.flag_rounded,
             title: 'Target baru',
             description: 'Tentukan tujuan dan rencana tabunganmu.',
-            onTap: () => _showComingSoon(context, 'Target baru'),
+            onTap: onCreateGoal,
           ),
           const SizedBox(height: 14),
           _ActionCard(
