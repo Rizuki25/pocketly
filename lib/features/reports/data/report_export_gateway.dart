@@ -5,6 +5,8 @@ import 'dart:ui';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/files/share_cache_cleanup.dart';
+
 abstract interface class ReportExportGateway {
   Future<bool> exportCsv({
     required Uint8List bytes,
@@ -35,6 +37,10 @@ class SystemReportExportGateway implements ReportExportGateway {
           fileNameOverrides: [fileName],
           sharePositionOrigin: sharePositionOrigin,
         ),
+      );
+      scheduleShareCacheFileCleanup(
+        temporaryDirectory: directory,
+        fileName: fileName,
       );
       return result.status != ShareResultStatus.dismissed;
     } finally {

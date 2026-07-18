@@ -6,6 +6,8 @@ import 'package:file_selector/file_selector.dart' hide XFile;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/files/share_cache_cleanup.dart';
+
 abstract interface class BackupFileGateway {
   Future<bool> exportBackup({
     required Uint8List bytes,
@@ -40,6 +42,10 @@ class SystemBackupFileGateway implements BackupFileGateway {
           sharePositionOrigin: sharePositionOrigin,
         ),
       );
+      scheduleShareCacheFileCleanup(
+        temporaryDirectory: directory,
+        fileName: fileName,
+      );
       return result.status != ShareResultStatus.dismissed;
     } finally {
       if (await file.exists()) await file.delete();
@@ -48,6 +54,8 @@ class SystemBackupFileGateway implements BackupFileGateway {
 
   @override
   Future<Uint8List?> pickBackup() async {
+    final temporaryDirectory = await getTemporaryDirectory();
+    await cleanupStaleFilePickerCopies(temporaryDirectory);
     const typeGroup = XTypeGroup(
       label: 'Backup Pocketly',
       extensions: ['pocketly'],
@@ -56,10 +64,18 @@ class SystemBackupFileGateway implements BackupFileGateway {
     );
     final selected = await openFile(acceptedTypeGroups: [typeGroup]);
     if (selected == null) return null;
-    final length = await selected.length();
-    if (length <= 0 || length > maxBackupSize) {
-      throw const FormatException('Ukuran file backup tidak valid.');
+    final selectedFile = File(selected.path);
+    try {
+      final length = await selected.length();
+      if (length <= 0 || length > maxBackupSize) {
+        throw const FormatException('Ukuran file backup tidak valid.');
+      }
+      return await selected.readAsBytes();
+    } finally {
+      await deleteFileIfInsideDirectory(
+        file: selectedFile,
+        directory: temporaryDirectory,
+      );
     }
-    return selected.readAsBytes();
   }
 }

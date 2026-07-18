@@ -130,6 +130,8 @@ class _BackupScreenState extends State<BackupScreen> {
         _messageIsError = false;
         _message = 'Backup berhasil dipulihkan.';
       });
+    } on FormatException catch (error) {
+      if (mounted) _showRestoreError(error.message);
     } on BackupException catch (error) {
       if (mounted) _showRestoreError(error.message);
     } on Object {

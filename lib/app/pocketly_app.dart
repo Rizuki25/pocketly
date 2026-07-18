@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
+import '../core/files/share_cache_cleanup.dart';
 import '../core/security/biometric_authenticator.dart';
 import '../core/security/biometric_preference_repository.dart';
 import '../core/security/local_auth_biometric_authenticator.dart';
@@ -106,7 +108,18 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
         widget.screenPrivacyController ??
         const MethodChannelScreenPrivacyController();
     _applyScreenPrivacy(_stage);
+    unawaited(_cleanupTemporaryFileCopies());
     _restoreSecurityState();
+  }
+
+  Future<void> _cleanupTemporaryFileCopies() async {
+    try {
+      final directory = await getTemporaryDirectory();
+      await cleanupShareCacheDirectory(directory);
+      await cleanupStaleFilePickerCopies(directory);
+    } on Object {
+      // Cache yang gagal dibersihkan tidak boleh menghambat bootstrap.
+    }
   }
 
   DateTime _now() => widget.now?.call() ?? DateTime.now();

@@ -158,6 +158,31 @@ void main() {
       findsOneWidget,
     );
   });
+
+  testWidgets('oversized backup reports its validation error', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: BackupScreen(
+          service: BackupService(
+            repository: MemoryGoalRepository(),
+            codec: codec,
+          ),
+          fileGateway: _BackupFileGateway(
+            pickError: const FormatException('Ukuran file backup tidak valid.'),
+          ),
+          pinRepository: _pinRepository(),
+          onRestored: () async {},
+          requirePinAuthentication: false,
+          allowCreate: false,
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const Key('restore-backup-action')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Ukuran file backup tidak valid.'), findsOneWidget);
+  });
 }
 
 SavingsGoal _goal(String id, String name) {
@@ -189,9 +214,10 @@ PinAuthRepository _pinRepository() => PinAuthRepository(
 );
 
 class _BackupFileGateway implements BackupFileGateway {
-  _BackupFileGateway({this.importedBytes});
+  _BackupFileGateway({this.importedBytes, this.pickError});
 
   final Uint8List? importedBytes;
+  final Object? pickError;
   Uint8List? exportedBytes;
   String? exportedFileName;
 
@@ -207,5 +233,9 @@ class _BackupFileGateway implements BackupFileGateway {
   }
 
   @override
-  Future<Uint8List?> pickBackup() async => importedBytes;
+  Future<Uint8List?> pickBackup() async {
+    final error = pickError;
+    if (error != null) throw error;
+    return importedBytes;
+  }
 }

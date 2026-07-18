@@ -103,6 +103,8 @@ implementasi pada sesi baru.
   peringatan bahwa file tidak terenkripsi.
 - CSV memakai UTF-8 BOM, escaping field, dan netralisasi formula spreadsheet;
   file sementara dihapus setelah share sheet selesai.
+- Cache attachment `share_plus` dan salinan import dari file picker dibersihkan
+  tanpa menghapus file sumber milik pengguna.
 - Unit test dan widget test untuk alur utama.
 
 ### Belum selesai
@@ -460,7 +462,7 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 62 test lulus.
+- Test: 67 test lulus.
 - Build Android debug: berhasil.
 - Build Android release dengan ProGuard SQLCipher: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
@@ -580,7 +582,8 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 3. Tindak lanjuti keterbatasan pemulihan alarm otomatis setelah reboot pada
    Samsung; QA notifikasi lainnya sudah selesai dan dicatat di
    `docs/qa-notifications-android.md`.
-4. QA share sheet untuk backup dan CSV pada Android/iOS nyata.
+4. QA share sheet backup dan CSV sudah selesai pada Android; lanjutkan matriks
+   yang sama pada perangkat iOS nyata.
 5. Tambahkan pengujian migrasi database serta audit keamanan pra-rilis.
 6. Putuskan apakah sinkronisasi/cloud masuk fase berikutnya atau aplikasi tetap
    sepenuhnya lokal.
