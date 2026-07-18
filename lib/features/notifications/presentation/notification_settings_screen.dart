@@ -178,6 +178,46 @@ class _NotificationSettingsScreenState
     }
   }
 
+  Future<void> _sendTestNotification() async {
+    final settings = _settings;
+    if (settings == null || _busy) return;
+    if (!settings.enabled) {
+      setState(() {
+        _messageIsError = true;
+        _message = 'Aktifkan pengingat sebelum mengirim notifikasi uji.';
+      });
+      return;
+    }
+    SavingsGoal? goal;
+    for (final candidate in widget.goals) {
+      if (candidate.status == SavingsGoalStatus.active &&
+          candidate.currentBalance < candidate.targetAmount) {
+        goal = candidate;
+        break;
+      }
+    }
+    setState(() {
+      _busy = true;
+      _message = null;
+    });
+    try {
+      await widget.scheduler.showTestNotification(goal, settings);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _messageIsError = false;
+        _message = 'Notifikasi uji telah dikirim.';
+      });
+    } on Object {
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _messageIsError = true;
+        _message = 'Notifikasi uji belum dapat ditampilkan.';
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final settings = _settings;
@@ -343,6 +383,13 @@ class _NotificationSettingsScreenState
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Text('Simpan pengaturan'),
+                  ),
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    key: const Key('send-test-notification'),
+                    onPressed: _busy ? null : _sendTestNotification,
+                    icon: const Icon(Icons.notification_add_outlined),
+                    label: const Text('Kirim notifikasi uji'),
                   ),
                 ],
               ),

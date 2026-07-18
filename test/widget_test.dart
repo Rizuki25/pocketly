@@ -11,6 +11,9 @@ import 'package:pocketly/core/security/secure_key_value_store.dart';
 import 'package:pocketly/core/security/screen_privacy_controller.dart';
 import 'package:pocketly/features/security/presentation/biometric_offer_screen.dart';
 import 'package:pocketly/features/goals/data/goal_repository.dart';
+import 'package:pocketly/features/goals/domain/savings_goal.dart';
+import 'package:pocketly/features/notifications/data/local_notification_scheduler.dart';
+import 'package:pocketly/features/notifications/domain/notification_settings.dart';
 
 void main() {
   testWidgets('splash opens the first onboarding page', (tester) async {
@@ -23,6 +26,17 @@ void main() {
 
     expect(find.byKey(const Key('onboarding-screen')), findsOneWidget);
     expect(find.text('Rencana kecil,\nhasil yang berarti.'), findsOneWidget);
+  });
+
+  testWidgets('bootstrap without credential cancels stale notifications', (
+    tester,
+  ) async {
+    final scheduler = _FakeNotificationScheduler();
+
+    await tester.pumpWidget(_testApp(notificationScheduler: scheduler));
+    await tester.pumpAndSettle();
+
+    expect(scheduler.cancelCalls, 1);
   });
 
   testWidgets('onboarding advances through all pages', (tester) async {
@@ -446,6 +460,7 @@ PocketlyApp _testApp({
   BiometricAuthenticator? biometricAuthenticator,
   ScreenPrivacyController? screenPrivacyController,
   GoalRepository? goalRepository,
+  NotificationScheduler? notificationScheduler,
   Future<void> Function()? deleteLocalDatabase,
   DateTime Function()? now,
 }) {
@@ -461,10 +476,38 @@ PocketlyApp _testApp({
     screenPrivacyController:
         screenPrivacyController ?? _FakeScreenPrivacyController(),
     goalRepository: goalRepository ?? MemoryGoalRepository(),
+    notificationScheduler:
+        notificationScheduler ?? _FakeNotificationScheduler(),
     secureStore: actualStore,
     deleteLocalDatabase: deleteLocalDatabase,
     now: now,
   );
+}
+
+class _FakeNotificationScheduler implements NotificationScheduler {
+  int cancelCalls = 0;
+
+  @override
+  Future<void> cancelAll() async => cancelCalls++;
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<NotificationPermissionStatus> requestPermission() async =>
+      NotificationPermissionStatus.granted;
+
+  @override
+  Future<void> showTestNotification(
+    SavingsGoal? goal,
+    NotificationSettings settings,
+  ) async {}
+
+  @override
+  Future<void> reschedule(
+    List<SavingsGoal> goals,
+    NotificationSettings settings,
+  ) async {}
 }
 
 class _FakeScreenPrivacyController implements ScreenPrivacyController {

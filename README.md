@@ -2,7 +2,10 @@
 
 Pocketly adalah aplikasi Flutter untuk mencatat dan mendampingi target tabungan pribadi. MVP bersifat **local-first**: aplikasi tidak menyimpan, menahan, atau memindahkan uang sungguhan.
 
-Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow.md` dan README ini sebelum melanjutkan implementasi pada sesi baru.
+Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md), sedangkan
+design system, inventaris layar, dan prompt AI UI berada di
+[`Design.md`](Design.md). Baca ketiga dokumen tersebut sebelum melanjutkan
+implementasi pada sesi baru.
 
 ## Keputusan produk saat ini
 
@@ -36,7 +39,9 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 - Layar penawaran biometrik.
 - Autentikasi biometrik native menggunakan `local_auth`.
 - Auto-prompt biometrik satu kali pada lock screen.
-- Penanganan biometrik gagal, dibatalkan, tidak tersedia, belum terdaftar, dan lockout.
+- Penanganan biometrik gagal, dibatalkan, tidak tersedia, belum terdaftar, dan
+  lockout telah tersedia di tingkat kode dan test. QA perangkat Samsung
+  menemukan status lockout vendor masih perlu diperbaiki sebelum rilis.
 - PIN selalu tersedia sebagai fallback.
 - Pengguna yang sudah memiliki PIN dapat mengaktifkan biometrik setelah masuk.
 - Auto-lock setelah aplikasi berada di background selama 1 menit.
@@ -88,6 +93,8 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
   atau pesan generik tanpa nama target.
 - Waktu pengingat serta quiet hours dapat diatur; jadwal di dalam quiet hours
   ditolak sebelum disimpan.
+- Tombol notifikasi uji menampilkan pesan langsung sesuai tingkat privasi tanpa
+  menunggu alarm terjadwal.
 - Tab Laporan dengan filter 7 hari, bulanan, tahunan, rentang khusus, target,
   serta jenis transaksi.
 - Ringkasan total setoran, total penarikan, perubahan bersih, rata-rata setoran,
@@ -101,6 +108,8 @@ Dokumen kebutuhan lengkap berada di [`workflow.md`](workflow.md). Baca `workflow
 ### Belum selesai
 
 - Ekspor PDF serta sinkronisasi/cloud opsional.
+- Perbaikan klasifikasi temporary/permanent biometric lockout pada dialog vendor
+  Samsung, diikuti pengujian ulang perangkat nyata.
 
 Setelah autentikasi berhasil, aplikasi membuka dashboard. Jika belum ada target,
 dashboard menampilkan empty state dan shortcut langsung ke formulir target baru.
@@ -451,12 +460,64 @@ flutter build apk --debug
 Status verifikasi terakhir:
 
 - Analyzer: tidak ada masalah.
-- Test: 60 test lulus.
+- Test: 62 test lulus.
 - Build Android debug: berhasil.
 - Build Android release dengan ProGuard SQLCipher: berhasil.
 - APK: `build/app/outputs/flutter-apk/app-debug.apk`.
 - APK release: `build/app/outputs/flutter-apk/app-release.apk`.
 - Build iOS belum diverifikasi karena lingkungan pengembangan saat ini menggunakan Windows.
+
+## Hasil QA biometrik dan secure storage Android nyata
+
+QA dilakukan pada 17 Juli 2026 menggunakan Samsung SM-A155F dengan Android 16
+(API 36). Build debug dipasang sebagai update agar persistensi credential dan
+database dapat diperiksa sebelum dan sesudah pengujian.
+
+### Lulus
+
+- Aktivasi biometrik dan dialog native Android.
+- Login menggunakan fingerprint terdaftar.
+- Biometrik tidak dikenali tanpa menyebabkan crash.
+- Pembatalan dialog tidak memicu prompt otomatis berulang.
+- PIN tetap dapat digunakan setelah biometrik gagal, dibatalkan, temporary
+  lockout, maupun permanent lockout.
+- Auto-prompt biometrik tetap bekerja setelah cold restart aplikasi.
+- Credential, material secure key, target, transaksi, dan database tetap
+  tersedia setelah reboot perangkat.
+- Android berhasil mengaktifkan temporary lockout 30 detik dan permanent
+  lockout setelah terlalu banyak percobaan fingerprint yang salah.
+- Permanent lockout dapat dipulihkan menggunakan credential lock screen
+  perangkat, kemudian Pocketly tetap dapat dibuka dengan PIN atau fingerprint.
+- Perubahan enrollment fingerprint tidak menghapus credential maupun data
+  Pocketly. Fingerprint utama tetap dapat membuka aplikasi setelah fingerprint
+  sementara dihapus.
+- `FLAG_SECURE` menutup isi lock screen Pocketly pada hasil screenshot.
+- Tidak ditemukan nilai PIN enam digit dalam bentuk plaintext pada XML secure
+  storage.
+- Header database tidak sama dengan header SQLite plaintext dan checksum
+  credential, secure key, serta database tetap konsisten selama restart,
+  reboot, lockout, dan perubahan enrollment.
+- Tidak ditemukan crash, `PlatformException`, `SQLiteException`, atau
+  `SecurityException` selama rangkaian QA.
+
+### Temuan yang harus diperbaiki
+
+- Pada Samsung SM-A155F, setelah temporary maupun permanent lockout lalu dialog
+  vendor ditutup, Pocketly menerima/menampilkan status sebagai pembatalan:
+  **“Autentikasi dibatalkan. Gunakan PIN atau coba lagi.”**
+- Tombol **Gunakan biometrik** masih aktif setelah lockout. Perilaku yang
+  diharapkan adalah pesan **“Biometrik sedang terkunci. Gunakan PIN.”** dan
+  tombol biometrik dinonaktifkan untuk sesi tersebut.
+- Fingerprint sementara yang baru ditambahkan sempat tidak dikenali. Log Android
+  mencatat penolakan pada lapisan sensor, bukan penolakan identitas oleh
+  Pocketly. Fingerprint utama tetap berhasil. Skenario enrollment baru perlu
+  diulang setelah perbaikan lockout untuk memastikan hasil konsisten.
+
+### Cakupan yang masih perlu diuji
+
+- Perangkat Android tanpa biometrik yang tersisa/terdaftar.
+- Pengujian ulang temporary dan permanent lockout setelah perbaikan.
+- Seluruh matriks biometrik dan secure storage pada perangkat iOS nyata.
 
 ## Catatan build Windows lintas drive
 
@@ -512,11 +573,16 @@ Gunakan `--offline` hanya jika seluruh package sudah tersedia di cache lokal.
 
 ## Langkah berikutnya yang direkomendasikan
 
-1. QA biometrik dan secure storage pada perangkat Android/iOS nyata.
-2. QA notifikasi, quiet hours, reboot, dan layar kunci pada perangkat nyata.
-3. QA share sheet untuk backup dan CSV pada Android/iOS nyata.
-4. Tambahkan pengujian migrasi database serta audit keamanan pra-rilis.
-5. Putuskan apakah sinkronisasi/cloud masuk fase berikutnya atau aplikasi tetap
+1. Perbaiki klasifikasi temporary/permanent biometric lockout pada perangkat
+   Samsung, nonaktifkan retry biometrik selama lockout, lalu ulangi QA terkait.
+2. Selesaikan QA kondisi tanpa biometrik terdaftar pada Android dan jalankan
+   matriks biometrik/secure storage pada perangkat iOS nyata.
+3. Tindak lanjuti keterbatasan pemulihan alarm otomatis setelah reboot pada
+   Samsung; QA notifikasi lainnya sudah selesai dan dicatat di
+   `docs/qa-notifications-android.md`.
+4. QA share sheet untuk backup dan CSV pada Android/iOS nyata.
+5. Tambahkan pengujian migrasi database serta audit keamanan pra-rilis.
+6. Putuskan apakah sinkronisasi/cloud masuk fase berikutnya atau aplikasi tetap
    sepenuhnya lokal.
 
 Untuk melanjutkan menggunakan Codex pada sesi baru, gunakan prompt singkat:

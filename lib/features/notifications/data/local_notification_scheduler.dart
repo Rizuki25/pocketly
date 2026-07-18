@@ -17,6 +17,11 @@ abstract interface class NotificationScheduler {
 
   Future<NotificationPermissionStatus> requestPermission();
 
+  Future<void> showTestNotification(
+    SavingsGoal? goal,
+    NotificationSettings settings,
+  );
+
   Future<void> reschedule(
     List<SavingsGoal> goals,
     NotificationSettings settings,
@@ -70,12 +75,7 @@ class LocalNotificationScheduler implements NotificationScheduler {
   Future<void> initialize() async {
     if (_initialized) return;
     tz_data.initializeTimeZones();
-    try {
-      final zone = await FlutterTimezone.getLocalTimezone();
-      tz.setLocalLocation(tz.getLocation(zone.identifier));
-    } on Object {
-      tz.setLocalLocation(tz.UTC);
-    }
+    await _refreshLocalTimezone();
     const android = AndroidInitializationSettings('ic_notification');
     const darwin = DarwinInitializationSettings(
       requestAlertPermission: false,
@@ -86,6 +86,15 @@ class LocalNotificationScheduler implements NotificationScheduler {
       settings: const InitializationSettings(android: android, iOS: darwin),
     );
     _initialized = true;
+  }
+
+  Future<void> _refreshLocalTimezone() async {
+    try {
+      final zone = await FlutterTimezone.getLocalTimezone();
+      tz.setLocalLocation(tz.getLocation(zone.identifier));
+    } on Object {
+      tz.setLocalLocation(tz.UTC);
+    }
   }
 
   @override
@@ -111,12 +120,34 @@ class LocalNotificationScheduler implements NotificationScheduler {
   }
 
   @override
+  Future<void> showTestNotification(
+    SavingsGoal? goal,
+    NotificationSettings settings,
+  ) async {
+    await initialize();
+    final copy = goal == null
+        ? const NotificationCopy(
+            title: 'Notifikasi uji Pocketly',
+            body: 'Pengingat lokal berhasil ditampilkan.',
+          )
+        : buildSavingsReminderCopy(goal, settings.privacy);
+    await _plugin.show(
+      id: 0x3fffffff,
+      title: copy.title,
+      body: copy.body,
+      notificationDetails: _details,
+      payload: goal == null ? 'test' : 'goal:${goal.id}',
+    );
+  }
+
+  @override
   Future<void> reschedule(
     List<SavingsGoal> goals,
     NotificationSettings settings,
   ) async {
     await initialize();
-    await _plugin.cancelAll();
+    await _refreshLocalTimezone();
+    await _plugin.cancelAllPendingNotifications();
     if (!settings.enabled) return;
     settings.validate();
     final eligible = goals
@@ -135,6 +166,7 @@ class LocalNotificationScheduler implements NotificationScheduler {
   @override
   Future<void> cancelAll() async {
     await initialize();
+    await _plugin.cancelAllPendingNotifications();
     await _plugin.cancelAll();
   }
 

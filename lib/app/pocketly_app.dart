@@ -183,12 +183,22 @@ class _PocketlyAppState extends State<PocketlyApp> with WidgetsBindingObserver {
   Future<void> _restoreSecurityState() async {
     try {
       final hasCredential = await _pinRepository.hasCredential();
-      if (hasCredential) {
-        _biometricEnabled = await _biometricPreferenceRepository.isEnabled();
-        if (mounted) _setStage(_AppStage.locked);
+      if (!hasCredential) {
+        await _cancelNotificationsWithoutCredential();
+        return;
       }
+      _biometricEnabled = await _biometricPreferenceRepository.isEnabled();
+      if (mounted) _setStage(_AppStage.locked);
     } on Object {
       if (mounted) _setStage(_AppStage.storageError);
+    }
+  }
+
+  Future<void> _cancelNotificationsWithoutCredential() async {
+    try {
+      await _notificationScheduler.cancelAll();
+    } on Object {
+      // Kegagalan layanan notifikasi tidak boleh menghalangi onboarding.
     }
   }
 

@@ -140,6 +140,48 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Izin notifikasi ditolak'), findsOneWidget);
   });
+
+  testWidgets('test notification uses currently selected privacy', (
+    tester,
+  ) async {
+    final repository = NotificationSettingsRepository(
+      store: MemorySecureKeyValueStore(),
+    );
+    await repository.write(
+      NotificationSettings.defaults.copyWith(enabled: true),
+    );
+    final scheduler = _NotificationScheduler(
+      permission: NotificationPermissionStatus.granted,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: NotificationSettingsScreen(
+          repository: repository,
+          scheduler: scheduler,
+          goals: [_goal()],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byKey(const Key('notification-privacy-field')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Lengkap (termasuk nominal)').last);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.byKey(const Key('send-test-notification')),
+      300,
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -80));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('send-test-notification')));
+    await tester.pumpAndSettle();
+
+    expect(scheduler.testCalls, 1);
+    expect(scheduler.lastTestGoal?.id, 'goal-1');
+    expect(scheduler.lastTestSettings?.privacy, NotificationPrivacy.full);
+    expect(find.text('Notifikasi uji telah dikirim.'), findsOneWidget);
+  });
 }
 
 SavingsGoal _goal() {
@@ -165,7 +207,10 @@ class _NotificationScheduler implements NotificationScheduler {
   int permissionRequests = 0;
   int rescheduleCalls = 0;
   int cancelCalls = 0;
+  int testCalls = 0;
   List<SavingsGoal> lastGoals = const [];
+  SavingsGoal? lastTestGoal;
+  NotificationSettings? lastTestSettings;
 
   @override
   Future<void> cancelAll() async => cancelCalls++;
@@ -177,6 +222,16 @@ class _NotificationScheduler implements NotificationScheduler {
   Future<NotificationPermissionStatus> requestPermission() async {
     permissionRequests++;
     return permission;
+  }
+
+  @override
+  Future<void> showTestNotification(
+    SavingsGoal? goal,
+    NotificationSettings settings,
+  ) async {
+    testCalls++;
+    lastTestGoal = goal;
+    lastTestSettings = settings;
   }
 
   @override
